@@ -1,30 +1,25 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  RefreshControl,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Plus, Filter, Archive, RefreshCw } from "lucide-react-native";
 import HabitCard from "../components/HabitCard";
+import CreateHabitModal from "../components/CreateHabitModal";
 import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
+import { useHabits } from "../context/HabitsContext";
 import { Habit, GameReward, ApiError } from "../types/types";
 import api from "../api/api";
 
 export default function HabitsScreen() {
   const { user } = useAuth();
+  const { onHabitCreated, onHabitCompleted } = useHabits();
   const [showInactive, setShowInactive] = useState(false);
   const [activeHabits, setActiveHabits] = useState<Habit[]>([]);
   const [inactiveHabits, setInactiveHabits] = useState<Habit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const displayHabits = showInactive ? inactiveHabits : activeHabits;
 
@@ -80,25 +75,41 @@ export default function HabitsScreen() {
   }, [fetchHabits]);
 
   const handleAddHabit = () => {
-    // TODO: Navigate to create habit screen
-    Alert.alert("Add Habit", "Create habit feature coming soon!");
+    setShowCreateModal(true);
   };
 
-  const handleHabitComplete = useCallback((habitId: number, reward: GameReward) => {
-    setActiveHabits((prevHabits) =>
-      prevHabits.map((habit) =>
-        habit.id === habitId
-          ? {
-              ...habit,
-              canCompleteToday: false,
-              currentStreak: reward.updatedHabit?.currentStreak || habit.currentStreak,
-              bestStreak: reward.updatedHabit?.bestStreak || habit.bestStreak,
-              lastCompletedAt: new Date().toISOString(),
-            }
-          : habit
-      )
-    );
-  }, []);
+  const handleHabitCreated = (newHabit: Habit) => {
+    console.log("✅ New habit created, adding to active habits:", newHabit.title);
+
+    setActiveHabits((prevHabits) => [newHabit, ...prevHabits]);
+
+    if (showInactive) {
+      setShowInactive(false);
+    }
+
+    onHabitCreated(newHabit);
+  };
+
+  const handleHabitComplete = useCallback(
+    (habitId: number, reward: GameReward) => {
+      setActiveHabits((prevHabits) =>
+        prevHabits.map((habit) =>
+          habit.id === habitId
+            ? {
+                ...habit,
+                canCompleteToday: false,
+                currentStreak: reward.updatedHabit?.currentStreak || habit.currentStreak,
+                bestStreak: reward.updatedHabit?.bestStreak || habit.bestStreak,
+                lastCompletedAt: new Date().toISOString(),
+              }
+            : habit
+        )
+      );
+
+      onHabitCompleted(habitId, reward);
+    },
+    [onHabitCompleted]
+  );
 
   const handleHabitUpdate = useCallback((updatedHabit: Habit) => {
     if (updatedHabit.isActive) {
@@ -240,6 +251,12 @@ export default function HabitsScreen() {
           </View>
         </View>
       </View>
+
+      <CreateHabitModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handleHabitCreated}
+      />
     </SafeAreaView>
   );
 }

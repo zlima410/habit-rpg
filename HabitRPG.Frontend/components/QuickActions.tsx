@@ -1,36 +1,43 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Plus, CheckCircle, BarChart3, Settings } from "lucide-react-native";
+import CreateHabitModal from "../components/CreateHabitModal";
 import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
+import { Habit } from "../types/types";
 
 interface QuickActionsProps {
-  onAddHabit?: () => void;
+  onAddHabit?: (newHabit: Habit) => void;
   onCompleteAll?: () => void;
   onViewStats?: () => void;
   onSettings?: () => void;
 }
 
 export default function QuickActions({ onAddHabit, onCompleteAll, onViewStats, onSettings }: QuickActionsProps) {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const handleAddHabit = () => {
+    setShowCreateModal(true);
+  };
+
+  const handleHabitCreated = (newHabit: Habit) => {
     if (onAddHabit) {
-      onAddHabit();
-    } else {
-      // Default behavior - navigate to habit creation screen
-      Alert.alert("Add Habit", "Habit creation feature coming soon!");
+      onAddHabit(newHabit);
     }
+    console.log("✅ New habit created:", newHabit.title);
   };
 
   const handleCompleteAll = () => {
     if (onCompleteAll) {
       onCompleteAll();
     } else {
+      // show confirmation dialog
       Alert.alert("Complete All Habits", "Mark all remaining habits for today as complete?", [
         { text: "Cancel", style: "cancel" },
         {
           text: "Complete All",
           style: "default",
           onPress: () => {
-            // This would trigger completion logic
+            // trigger completion logic
             console.log("Completing all habits...");
           },
         },
@@ -42,6 +49,7 @@ export default function QuickActions({ onAddHabit, onCompleteAll, onViewStats, o
     if (onViewStats) {
       onViewStats();
     } else {
+      // Default behavior - navigate to stats screen
       Alert.alert("View Stats", "Navigating to statistics...");
     }
   };
@@ -50,6 +58,7 @@ export default function QuickActions({ onAddHabit, onCompleteAll, onViewStats, o
     if (onSettings) {
       onSettings();
     } else {
+      // Default behavior - could navigate to settings screen
       Alert.alert("Settings", "Settings feature coming soon!");
     }
   };
@@ -125,6 +134,12 @@ export default function QuickActions({ onAddHabit, onCompleteAll, onViewStats, o
           })}
         </View>
       </View>
+
+      <CreateHabitModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handleHabitCreated}
+      />
     </View>
   );
 }

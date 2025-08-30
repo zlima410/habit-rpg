@@ -16,6 +16,7 @@ import StatsScreen from "./screens/StatsScreen"
 import ProfileScreen from "./screens/ProfileScreen"
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import { colors } from "./constants/theme"
+import { HabitsProvider } from "./context/HabitsContext"
 
 const Tab = createBottomTabNavigator()
 const Stack = createStackNavigator()
@@ -109,7 +110,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AppContent />
+        <HabitsProvider>
+          <AppContent />
+        </HabitsProvider>
       </AuthProvider>
     </SafeAreaProvider>
   )

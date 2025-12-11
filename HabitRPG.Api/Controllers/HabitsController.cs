@@ -5,6 +5,7 @@ using System.Security.Claims;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
+using HabitRPG.Api.DTOs;
 using System.ComponentModel.DataAnnotations;
 
 namespace HabitRPG.Api.Controllers
@@ -678,52 +679,6 @@ namespace HabitRPG.Api.Controllers
                 _logger.LogError(ex, "Error retrieving deleted habits for user {UserId}", userId);
                 return StatusCode(500, new { message = "An error occurred while retrieving deleted habits" });
             }
-        }
-
-        public class CreateHabitRequest
-        {
-            [Required]
-            [StringLength(200, MinimumLength = 1)]
-            public string Title { get; set; } = string.Empty;
-
-            [StringLength(1000)]
-            public string? Description { get; set; }
-            [Required(ErrorMessage = "Frequency is required")]
-            public HabitFrequency Frequency { get; set; } = HabitFrequency.Daily;
-            [Required(ErrorMessage = "Difficulty is required")]
-            public HabitDifficulty Difficulty { get; set; } = HabitDifficulty.Medium;
-        }
-
-        public class UpdateHabitRequest
-        {
-            [StringLength(200, ErrorMessage = "Title cannot exceed 200 characters")]
-            public string? Title { get; set; }
-            [StringLength(1000, ErrorMessage = "Description cannot exceed 1000 characters")]
-            public string? Description { get; set; }
-            public HabitFrequency? Frequency { get; set; }
-            public HabitDifficulty? Difficulty { get; set; }
-        }
-
-        public class PermanentDeleteRequest
-        {
-            [Required(ErrorMessage = "Confirmation text is required")]
-            public string ConfirmationText { get; set; } = string.Empty;
-        }
-        
-        public class BulkDeleteRequest
-        {
-            [Required]
-            public List<int> HabitIds { get; set; } = new();
-
-            public bool IsPermanent { get; set; } = false;
-
-            public string? ConfirmationText { get; set; }
-        }
-
-        public class BulkRestoreRequest
-        {
-            [Required]
-            public List<int> HabitIds { get; set; } = new();
         }
     }
 }

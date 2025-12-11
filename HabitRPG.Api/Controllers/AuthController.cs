@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using HabitRPG.Api.Services;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using HabitRPG.Api.DTOs;
 
 namespace HabitRPG.Api.Controllers
 {

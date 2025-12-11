@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
+using HabitRPG.Api.DTOs;
 
 namespace HabitRPG.Api.Services
 {

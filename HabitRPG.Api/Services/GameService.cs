@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
+using HabitRPG.Api.DTOs;
 
 namespace HabitRPG.Api.Services
 {

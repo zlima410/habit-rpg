@@ -4,6 +4,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Services;
+using HabitRPG.Api.Extensions;
+using HabitRPG.Api.Middleware;
 using DotNetEnv;
 
 Env.Load();
@@ -11,6 +13,8 @@ Env.Load();
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+
+builder.Services.AddValidation();
 
 builder.Services.AddProblemDetails(options =>
 {
@@ -176,6 +180,7 @@ else
 }
 
 app.UseCors("AllowReactNative");
+app.UseMiddleware<ValidationMiddleware>();
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();

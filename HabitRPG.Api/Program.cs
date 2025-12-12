@@ -146,6 +146,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGameService, GameService>();
 
+builder.Services.AddRepositories();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactNative", policy =>

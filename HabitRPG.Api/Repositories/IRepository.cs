@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-namespace HabitRPG.API.Repositories
+namespace HabitRPG.Api.Repositories
 {
     public interface IRepository<T> where T : class
     {

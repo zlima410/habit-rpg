@@ -57,5 +57,24 @@ namespace HabitRPG.Api.Tests.Helpers
                 CompletedAt = completedAt ?? DateTime.UtcNow
             };
         }
+
+        public static RegisterRequest CreateTestRegisterRequest(string username, string email, string password)
+        {
+            return new RegisterRequest
+            {
+                Username = username,
+                Email = email,
+                Password = password
+            };
+        }
+
+        public static LoginRequest CreateTestLoginRequest(string email, string password)
+        {
+            return new LoginRequest
+            {
+                Email = email,
+                Password = password
+            };  
+        }
     }
 }

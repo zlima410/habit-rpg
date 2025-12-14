@@ -2,11 +2,13 @@ using Xunit;
 using FluentAssertions;
 using Moq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Tests.Helpers;
 
 namespace HabitRPG.Api.Tests.Services
 {
@@ -19,12 +21,7 @@ namespace HabitRPG.Api.Tests.Services
         public GameServiceTests()
         {
             _loggerMock = new Mock<ILogger<GameService>>();
-
-            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-                .Options;
-
-            _context = new ApplicationDbContext(options);
+            _context = TestHelpers.CreateInMemoryContext();
             _gameService = new GameService(_context, _loggerMock.Object);
         }
 
@@ -109,13 +106,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CanCompleteHabitTodayAsync_NoCompletionsToday_ReturnsTrue()
         {
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                IsActive = true
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1);
             _context.Habits.Add(habit);
             await _context.SaveChangesAsync();
 
@@ -127,20 +118,10 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CanCompleteHabitTodayAsync_AlreadyCompletedToday_ReturnsFalse()
         {
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                IsActive = true
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1);
             _context.Habits.Add(habit);
 
-            var completionLog = new CompletionLog
-            {
-                HabitId = 1,
-                CompletedAt = DateTime.UtcNow
-            };
+            var completionLog = TestHelpers.CreateTestCompletionLog(habitId: 1);
             _context.CompletionLogs.Add(completionLog);
             await _context.SaveChangesAsync();
 
@@ -187,33 +168,13 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_AlreadyCompletedToday_ReturnsFailure()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 0,
-                TotalXP = 0
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
             _context.Users.Add(user);
 
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                Difficulty = HabitDifficulty.Medium,
-                IsActive = true
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
             _context.Habits.Add(habit);
 
-            var completionLog = new CompletionLog
-            {
-                HabitId = 1,
-                CompletedAt = DateTime.UtcNow
-            };
+            var completionLog = TestHelpers.CreateTestCompletionLog(habitId: 1);
             _context.CompletionLogs.Add(completionLog);
             await _context.SaveChangesAsync();
 
@@ -226,28 +187,10 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_ValidHabit_ReturnsSuccess()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 0,
-                TotalXP = 0
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
             _context.Users.Add(user);
 
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                Difficulty = HabitDifficulty.Medium,
-                IsActive = true,
-                CurrentStreak = 0,
-                BestStreak = 0
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
             _context.Habits.Add(habit);
             await _context.SaveChangesAsync();
 
@@ -264,28 +207,12 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_LevelUp_ReturnsSuccessWithLevelUp()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 90,
-                TotalXP = 90
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
+            user.XP = 90;
+            user.TotalXP = 90;
             _context.Users.Add(user);
 
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                Difficulty = HabitDifficulty.Medium,
-                IsActive = true,
-                CurrentStreak = 0,
-                BestStreak = 0
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
             _context.Habits.Add(habit);
             await _context.SaveChangesAsync();
 
@@ -301,35 +228,15 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_StreakContinues_UpdatesStreak()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 0,
-                TotalXP = 0
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
             _context.Users.Add(user);
 
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                Difficulty = HabitDifficulty.Medium,
-                IsActive = true,
-                CurrentStreak = 5,
-                BestStreak = 5
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            habit.CurrentStreak = 5;
+            habit.BestStreak = 5;
             _context.Habits.Add(habit);
 
-            var yesterdayCompletion = new CompletionLog
-            {
-                HabitId = 1,
-                CompletedAt = DateTime.UtcNow.AddDays(-1)
-            };
+            var yesterdayCompletion = TestHelpers.CreateTestCompletionLog(habitId: 1, completedAt: DateTime.UtcNow.AddDays(-1));
             _context.CompletionLogs.Add(yesterdayCompletion);
             await _context.SaveChangesAsync();
 
@@ -342,35 +249,15 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_StreakBroken_ResetsStreak()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 0,
-                TotalXP = 0
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
             _context.Users.Add(user);
 
-            var habit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Test Habit",
-                Difficulty = HabitDifficulty.Medium,
-                IsActive = true,
-                CurrentStreak = 5,
-                BestStreak = 5
-            };
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            habit.CurrentStreak = 5;
+            habit.BestStreak = 5;
             _context.Habits.Add(habit);
 
-            var oldCompletion = new CompletionLog
-            {
-                HabitId = 1,
-                CompletedAt = DateTime.UtcNow.AddDays(-3) // 3 days ago, streak broken
-            };
+            var oldCompletion = TestHelpers.CreateTestCompletionLog(habitId: 1, completedAt: DateTime.UtcNow.AddDays(-3));
             _context.CompletionLogs.Add(oldCompletion);
             await _context.SaveChangesAsync();
 
@@ -383,26 +270,10 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_DifferentDifficulties_GiveCorrectXp()
         {
-            var user = new User
-            {
-                Id = 1,
-                Username = "testuser",
-                Email = "test@example.com",
-                PasswordHash = "hash",
-                Level = 1,
-                XP = 0,
-                TotalXP = 0
-            };
+            var user = TestHelpers.CreateTestUser(id: 1);
             _context.Users.Add(user);
 
-            var easyHabit = new Habit
-            {
-                Id = 1,
-                UserId = 1,
-                Title = "Easy Habit",
-                Difficulty = HabitDifficulty.Easy,
-                IsActive = true
-            };
+            var easyHabit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Easy);
             _context.Habits.Add(easyHabit);
             await _context.SaveChangesAsync();
 

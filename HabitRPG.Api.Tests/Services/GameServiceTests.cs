@@ -18,7 +18,7 @@ namespace HabitRPG.Api.Tests.Services
 
         public GameServiceTests()
         {
-            _loggerMock = new Mock<ILogger<GameServiceTests>>();
+            _loggerMock = new Mock<ILogger<GameService>>();
 
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
@@ -33,7 +33,7 @@ namespace HabitRPG.Api.Tests.Services
         {
             var result = _gameService.CalculateXpForHabit(HabitDifficulty.Easy);
 
-            result.Should().Be(5)
+            result.Should().Be(5);
         }
 
         [Fact]
@@ -181,7 +181,7 @@ namespace HabitRPG.Api.Tests.Services
             var result = await _gameService.CompleteHabitAsync(1, 999);
 
             result.Success.Should().BeFalse();
-            result.Message.Should().Be("Habit not found or inactive")
+            result.Message.Should().Be("Habit not found or inactive");
         }
 
         [Fact]
@@ -289,7 +289,7 @@ namespace HabitRPG.Api.Tests.Services
             _context.Habits.Add(habit);
             await _context.SaveChangesAsync();
 
-            var result = await _gameService.CompleteHabitAsync(1, 1,);
+            var result = await _gameService.CompleteHabitAsync(1, 1);
 
             result.Success.Should().BeTrue();
             result.LeveledUp.Should().BeTrue();
@@ -333,7 +333,7 @@ namespace HabitRPG.Api.Tests.Services
             _context.CompletionLogs.Add(yesterdayCompletion);
             await _context.SaveChangesAsync();
 
-            var result = await _gameService.CompleteHabitAsync(1, 1,);
+            var result = await _gameService.CompleteHabitAsync(1, 1);
 
             result.Success.Should().BeTrue();
             result.NewStreak.Should().Be(6);

@@ -9,6 +9,7 @@ using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
 using HabitRPG.Api.Tests.Helpers;
+using System.Security.Claims;
 
 namespace HabitRPG.Api.Tests.Services
 {
@@ -31,7 +32,7 @@ namespace HabitRPG.Api.Tests.Services
 
             _configMock.Setup(x => x.GetSection("JwtSettings")).Returns(jwtSection.Object);
             
-            Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+            Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-secret-key-that-is-at-least-32-characters-long-for-testing");
 
             _context = TestHelpers.CreateInMemoryContext();
             _authService = new AuthService(_context, _configMock.Object, _loggerMock.Object);
@@ -246,13 +247,149 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_TrimsUsernameAndEmail_ReturnsSuccess()
         {
-            var request = TestHelpers.CreateTestRegisterRequest(username: "  testuser  ", email: "  TEST@EXAMPLE.COM  ", password: "password123");
+            var request = TestHelpers.CreateTestRegisterRequest(username: "  testuser  ", email: "  test@example.com  ", password: "password123");
 
             var result = await _authService.RegisterAsync(request);
 
             result.Success.Should().BeTrue();
             result.User!.Username.Should().Be("testuser");
             result.User.Email.Should().Be("test@example.com");
+        }
+
+        [Fact]
+        public async Task LoginAsync_ValidCredentials_ReturnsSuccess()
+        {
+            var password = "password123";
+            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: password);
+
+            var result = await _authService.LoginAsync(request);
+
+            result.Success.Should().BeTrue();
+            result.User.Should().NotBeNull();
+            result.User!.Email.Should().Be("test@example.com");
+            result.Token.Should().NotBeNullOrEmpty();
+        }
+
+        [Fact]
+        public async Task LoginAsync_InvalidEmail_ReturnsFailure()
+        {
+            var request = TestHelpers.CreateTestLoginRequest(email: "nonexistent@example.com", password: "password123");
+
+            var result = await _authService.LoginAsync(request);
+
+            result.Success.Should().BeFalse();
+            result.Message.Should().Be("Invalid email or password");
+        }
+
+        [Fact]
+        public async Task LoginAsync_InvalidPassword_ReturnsFailure()
+        {
+            var password = "password123";
+            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: "wrongpassword");
+
+            var result = await _authService.LoginAsync(request);
+
+            result.Success.Should().BeFalse();
+            result.Message.Should().Be("Invalid email or password");
+        }
+
+        [Fact]
+        public async Task LoginAsync_EmptyEmail_ReturnsFailure()
+        {
+            var request = TestHelpers.CreateTestLoginRequest(email: "", password: "password123");
+
+            var result = await _authService.LoginAsync(request);
+
+            result.Success.Should().BeFalse();
+            result.Message.Should().Be("Invalid email or password");
+        }
+
+        [Fact]
+        public async Task LoginAsync_EmptyPassword_ReturnsFailure()
+        {
+            var user = TestHelpers.CreateTestUser(id: 1);
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: "");
+
+            var result = await _authService.LoginAsync(request);
+
+            result.Success.Should().BeFalse();
+            result.Message.Should().Be("Invalid email or password");
+        }
+
+        [Fact]
+        public void GenerateJwtToken_ValidUser_ReturnsToken()
+        {
+            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+
+            var token = _authService.GenerateJwtToken(user);
+
+            token.Should().NotBeNullOrEmpty();
+        }
+
+        [Fact]
+        public void GenerateJwtToken_ValidUser_TokenContainsClaims()
+        {
+            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+
+            var token = _authService.GenerateJwtToken(user);
+
+            token.Should().NotBeNullOrEmpty();
+
+            // Decode and verify token contains expected claims
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jsonToken = handler.ReadJwtToken(token);
+            jsonToken.Claims.Should().Contain(c => c.Type == "userId" && c.Value == "1");
+            jsonToken.Claims.Should().Contain(c => c.Type == "username" && c.Value == "testuser");
+            jsonToken.Claims.Should().Contain(c => c.Type == "email" && c.Value == "test@example.com");
+        }
+
+        [Fact]
+        public void GenerateJwtToken_ValidUser_TokenHasCorrectExpiration()
+        {
+            var user = TestHelpers.CreateTestUser(id: 1);
+
+            var token = _authService.GenerateJwtToken(user);
+
+            token.Should().NotBeNullOrEmpty();
+
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jsonToken = handler.ReadJwtToken(token);
+            jsonToken.ValidTo.Should().BeAfter(DateTime.UtcNow);
+            jsonToken.ValidTo.Should().BeBefore(DateTime.UtcNow.AddHours(25));
+        }
+
+        [Fact]
+        public void GenerateJwtToken_ValidUser_TokenHasCorrectIssuerAndAudience()
+        {
+            var user = TestHelpers.CreateTestUser(id: 1);
+
+            var token = _authService.GenerateJwtToken(user);
+
+            token.Should().NotBeNullOrEmpty();
+
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jsonToken = handler.ReadJwtToken(token);
+            jsonToken.Issuer.Should().Be("HabitRPG.Api");
+            jsonToken.Audiences.Should().Contain("HabitRPG.Mobile");
+        }
+
+        public void Dispose()
+        {
+            _context.Database.EnsureDeleted();
+            _context.Dispose();
         }
     }
 }

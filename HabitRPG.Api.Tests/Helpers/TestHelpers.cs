@@ -1,5 +1,6 @@
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
+using HabitRPG.Api.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 

@@ -24,22 +24,25 @@ namespace HabitRPG.Api.Services
 
         public async Task<AuthResult> RegisterAsync(RegisterRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.Username))
+            var trimmedUsername = request.Username?.Trim() ?? string.Empty;
+            var trimmedEmail = request.Email?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(trimmedUsername))
                 return new AuthResult { Success = false, Message = "Username is required" };
 
-            if (string.IsNullOrWhiteSpace(request.Email))
+            if (string.IsNullOrWhiteSpace(trimmedEmail))
                 return new AuthResult { Success = false, Message = "Email is required" };
 
             if (string.IsNullOrWhiteSpace(request.Password))
                 return new AuthResult { Success = false, Message = "Password is required" };
 
-            if (request.Username.Length < 3 || request.Username.Length > 50)
+            if (trimmedUsername.Length < 3 || trimmedUsername.Length > 50)
                 return new AuthResult { Success = false, Message = "Username must be between 3 and 50 characters" };
 
-            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Username, @"^[a-zA-Z0-9_-]+$"))
+            if (!System.Text.RegularExpressions.Regex.IsMatch(trimmedUsername, @"^[a-zA-Z0-9_-]+$"))
                 return new AuthResult { Success = false, Message = "Username can only contain letters, numbers, hyphens, and underscores" };
 
-            if (!IsValidEmail(request.Email))
+            if (!IsValidEmail(trimmedEmail))
                 return new AuthResult { Success = false, Message = "Please provide a valid email address" };
 
             if (request.Password.Length < 6)

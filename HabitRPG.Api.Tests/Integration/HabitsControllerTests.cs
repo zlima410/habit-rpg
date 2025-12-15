@@ -257,8 +257,11 @@ namespace HabitRPG.Api.Tests.Integration
 
             response.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-            await DbContext.Entry(habit).ReloadAsync();
-            habit.IsActive.Should().BeTrue();
+            var getResponse = await Client.GetAsync($"/api/habits/{habit.Id}");
+            getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var restoredHabit = await getResponse.Content.ReadFromJsonAsync<HabitDto>();
+            restoredHabit.Should().NotBeNull();
+            restoredHabit!.IsActive.Should().BeTrue();
         }
 
         [Fact]

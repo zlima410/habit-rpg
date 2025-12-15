@@ -24,7 +24,6 @@ namespace HabitRPG.Api.Tests.Integration
             Factory = factory;
             Client = Factory.CreateClient();
 
-            // Create a scope that will be disposed properly
             Scope = Factory.Services.CreateScope();
             UnitOfWork = Scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             DbContext = Scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -128,19 +127,58 @@ namespace HabitRPG.Api.Tests.Integration
             return log;
         }
 
-        // Helper method to reload an entity from the database after API changes
-        protected async Task<T> ReloadEntityAsync<T>(T entity) where T : class
+        protected async Task<T?> ReloadEntityViaUnitOfWorkAsync<T>(int id) where T : class
         {
-            await DbContext.Entry(entity).ReloadAsync();
-            return entity;
+            if (typeof(T) == typeof(User))
+            {
+                return await UnitOfWork.Users.GetByIdAsync(id) as T;
+            }
+            
+            if (typeof(T) == typeof(Habit))
+            {
+                return await UnitOfWork.Habits.GetByIdAsync(id) as T;
+            }
+            
+            if (typeof(T) == typeof(CompletionLog))
+            {
+                return await UnitOfWork.CompletionLogs.GetByIdAsync(id) as T;
+            }
+            
+            return await DbContext.Set<T>().FindAsync(id);
+        }
+
+        protected async Task<Habit?> ReloadHabitWithUserAsync(int habitId)
+        {
+            return await UnitOfWork.Habits.GetByIdWithUserAsync(habitId);
+        }
+
+        protected async Task<User?> ReloadUserWithHabitsAsync(int userId, bool includeInactive = false)
+        {
+            return await UnitOfWork.Users.GetUserWithHabitsAsync(userId, includeInactive);
+        }
+
+        protected async Task<Habit?> ReloadHabitFreshAsync(int habitId)
+        {
+            var trackedEntity = DbContext.ChangeTracker.Entries<Habit>()
+                .FirstOrDefault(e => e.Entity.Id == habitId);
+            if (trackedEntity != null)
+                trackedEntity.State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+
+            return await UnitOfWork.Habits.GetByIdAsync(habitId);
         }
 
         public void Dispose()
         {
-            DbContext.Database.EnsureDeleted();
+            try
+            {
+                DbContext.Database.EnsureDeleted();
+            }
+            catch
+            {
+            }
+
             UnitOfWork.Dispose();
             Scope.Dispose();
-            DbContext.Dispose();
             Client.Dispose();
         }
     }

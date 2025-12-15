@@ -3,21 +3,21 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
 
 namespace HabitRPG.Api.Services
 {
     public class AuthService : IAuthService
     {
-        private readonly ApplicationDbContext _db;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IConfiguration _config;
         private readonly ILogger<AuthService> _logger;
 
-        public AuthService(ApplicationDbContext db, IConfiguration config, ILogger<AuthService> logger)
+        public AuthService(IUnitOfWork unitOfWork, IConfiguration config, ILogger<AuthService> logger)
         {
-            _db = db;
+            _unitOfWork = unitOfWork;
             _config = config;
             _logger = logger;
         }
@@ -53,22 +53,23 @@ namespace HabitRPG.Api.Services
 
             try
             {
-                if (await _db.Users.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower()))
+                var lowerEmail = trimmedEmail.ToLower();
+                if (await _unitOfWork.Users.EmailExistsAsync(lowerEmail))
                     return new AuthResult { Success = false, Message = "An account with this email already exists" };
 
-                if (await _db.Users.AnyAsync(u => u.Username.ToLower() == request.Username.ToLower()))
+                if (await _unitOfWork.Users.UsernameExistsAsync(trimmedUsername))
                     return new AuthResult { Success = false, Message = "This username is already taken" };
 
                 var user = new User
                 {
-                    Username = request.Username.Trim(),
-                    Email = request.Email.Trim().ToLower(),
+                    Username = trimmedUsername,
+                    Email = lowerEmail,
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                     CreatedAt = DateTime.UtcNow
                 };
 
-                _db.Users.Add(user);
-                await _db.SaveChangesAsync();
+                await _unitOfWork.Users.AddAsync(user);
+                await _unitOfWork.SaveChangesAsync();
 
                 var token = GenerateJwtToken(user);
 
@@ -99,25 +100,21 @@ namespace HabitRPG.Api.Services
         {
             try
             {
-                var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+                var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
 
                 if (user == null)
-                {
                     return new AuthResult
                     {
                         Success = false,
                         Message = "Invalid email or password"
                     };
-                }
 
                 if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-                {
                     return new AuthResult
                     {
                         Success = false,
                         Message = "Invalid email or password"
                     };
-                }
 
                 var token = GenerateJwtToken(user);
 

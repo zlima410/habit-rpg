@@ -1,13 +1,12 @@
 using Xunit;
 using FluentAssertions;
 using Moq;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
 using HabitRPG.Api.Tests.Helpers;
 using System.Security.Claims;
 
@@ -17,13 +16,16 @@ namespace HabitRPG.Api.Tests.Services
     {
         private readonly Mock<ILogger<AuthService>> _loggerMock;
         private readonly Mock<IConfiguration> _configMock;
-        private readonly ApplicationDbContext _context;
+        private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+        private readonly Mock<IUserRepository> _userRepositoryMock;
         private readonly AuthService _authService;
 
         public AuthServiceTests()
         {
             _loggerMock = new Mock<ILogger<AuthService>>();
             _configMock = new Mock<IConfiguration>();
+            _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _userRepositoryMock = new Mock<IUserRepository>();
 
             var jwtSection = new Mock<IConfigurationSection>();
             jwtSection.Setup(x => x["Issuer"]).Returns("HabitRPG.Api");
@@ -34,14 +36,33 @@ namespace HabitRPG.Api.Tests.Services
             
             Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-secret-key-that-is-at-least-32-characters-long-for-testing");
 
-            _context = TestHelpers.CreateInMemoryContext();
-            _authService = new AuthService(_context, _configMock.Object, _loggerMock.Object);
+            _unitOfWorkMock.Setup(u => u.Users).Returns(_userRepositoryMock.Object);
+
+            _authService = new AuthService(_unitOfWorkMock.Object, _configMock.Object, _loggerMock.Object);
         }
 
         [Fact]
         public async Task RegisterAsync_ValidRequest_ReturnsSuccess()
         {
             var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
+
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("testuser"))
+                .ReturnsAsync(false);
+
+            var savedUser = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+
+            _userRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<User>()))
+                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+
+            _unitOfWorkMock
+                .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(1);
 
             var result = await _authService.RegisterAsync(request);
 
@@ -143,9 +164,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_DuplicateEmail_ReturnsFailure()
         {
-            var existingUser = TestHelpers.CreateTestUser(id: 1, username: "existing", email: "test@example.com");
-            _context.Users.Add(existingUser);
-            await _context.SaveChangesAsync();
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(true);
 
             var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
 
@@ -158,11 +179,11 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_DuplicateEmailCaseInsensitive_ReturnsFailure()
         {
-            var existingUser = TestHelpers.CreateTestUser(id: 1, username: "existing", email: "Test@Example.com");
-            _context.Users.Add(existingUser);
-            await _context.SaveChangesAsync();
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(true);
 
-            var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
+            var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "Test@Example.com", password: "password123");
 
             var result = await _authService.RegisterAsync(request);
 
@@ -174,8 +195,10 @@ namespace HabitRPG.Api.Tests.Services
         public async Task RegisterAsync_DuplicateUsername_ReturnsFailure()
         {
             var existingUser = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "existing@example.com");
-            _context.Users.Add(existingUser);
-            await _context.SaveChangesAsync();
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("testuser"))
+                .ReturnsAsync(true);
 
             var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
 
@@ -188,9 +211,13 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_DuplicateUsernameCaseInsensitive_ReturnsFailure()
         {
-            var existingUser = TestHelpers.CreateTestUser(id: 1, username: "TestUser", email: "existing@example.com");
-            _context.Users.Add(existingUser);
-            await _context.SaveChangesAsync();
+             _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("testuser"))
+                .ReturnsAsync(true); 
 
             var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
 
@@ -227,6 +254,22 @@ namespace HabitRPG.Api.Tests.Services
         {
             var request = TestHelpers.CreateTestRegisterRequest(username: "test_user", email: "test@example.com", password: "password123");
 
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("test_user"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<User>()))
+                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+
+            _unitOfWorkMock
+                .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(1);
+
             var result = await _authService.RegisterAsync(request);
 
             result.Success.Should().BeTrue();
@@ -238,6 +281,22 @@ namespace HabitRPG.Api.Tests.Services
         {
             var request = TestHelpers.CreateTestRegisterRequest(username: "test-user", email: "test@example.com", password: "password123");
 
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("test-user"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<User>()))
+                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+
+            _unitOfWorkMock
+                .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(1);
+
             var result = await _authService.RegisterAsync(request);
 
             result.Success.Should().BeTrue();
@@ -248,6 +307,22 @@ namespace HabitRPG.Api.Tests.Services
         public async Task RegisterAsync_TrimsUsernameAndEmail_ReturnsSuccess()
         {
             var request = TestHelpers.CreateTestRegisterRequest(username: "  testuser  ", email: "  test@example.com  ", password: "password123");
+
+            _userRepositoryMock
+                .Setup(r => r.EmailExistsAsync("test@example.com"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.UsernameExistsAsync("testuser"))
+                .ReturnsAsync(false);
+
+            _userRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<User>()))
+                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+
+            _unitOfWorkMock
+                .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(1);
 
             var result = await _authService.RegisterAsync(request);
 
@@ -262,8 +337,10 @@ namespace HabitRPG.Api.Tests.Services
             var password = "password123";
             var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+
+            _userRepositoryMock
+                .Setup(r => r.GetByEmailAsync("test@example.com"))
+                .ReturnsAsync(user);
 
             var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: password);
 
@@ -278,6 +355,10 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task LoginAsync_InvalidEmail_ReturnsFailure()
         {
+            _userRepositoryMock
+                .Setup(r => r.GetByEmailAsync("nonexistent@example.com"))
+                .ReturnsAsync((User?)null);
+
             var request = TestHelpers.CreateTestLoginRequest(email: "nonexistent@example.com", password: "password123");
 
             var result = await _authService.LoginAsync(request);
@@ -292,8 +373,10 @@ namespace HabitRPG.Api.Tests.Services
             var password = "password123";
             var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+
+            _userRepositoryMock
+                .Setup(r => r.GetByEmailAsync("test@example.com"))
+                .ReturnsAsync(user);
 
             var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: "wrongpassword");
 
@@ -317,9 +400,12 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task LoginAsync_EmptyPassword_ReturnsFailure()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123");
+
+            _userRepositoryMock
+                .Setup(r => r.GetByEmailAsync("test@example.com"))
+                .ReturnsAsync(user);
 
             var request = TestHelpers.CreateTestLoginRequest(email: "test@example.com", password: "");
 
@@ -388,8 +474,7 @@ namespace HabitRPG.Api.Tests.Services
 
         public void Dispose()
         {
-            _context.Database.EnsureDeleted();
-            _context.Dispose();
+
         }
     }
 }

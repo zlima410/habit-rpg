@@ -1,21 +1,23 @@
 using Microsoft.EntityFrameworkCore;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
+using System.Security.Cryptography;
+using FluentValidation.Validators;
 
 namespace HabitRPG.Api.Services
 {
     public class GameService : IGameService
     {
-        private readonly ApplicationDbContext _db;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<GameService> _logger;
         private const int XP_PER_LEVEL = 100;
         private const int MAX_LEVEL = 1000;
         private const int MAX_XP = 100_000_000;
 
-        public GameService(ApplicationDbContext db, ILogger<GameService> logger)
+        public GameService(IUnitOfWork unitOfWork, ILogger<GameService> logger)
         {
-            _db = db;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -31,26 +33,24 @@ namespace HabitRPG.Api.Services
                 return new GameReward { Success = false, Message = "Invalid habit ID" };
             }
 
-            var strategy = _db.Database.CreateExecutionStrategy();
-            
-            return await strategy.ExecuteAsync(async () =>
+            try
             {
-                using var transaction = await _db.Database.BeginTransactionAsync();
-                
+                await _unitOfWork.BeginTransactionAsync();
+
                 try
                 {
-                    var habit = await _db.Habits
-                        .Include(h => h.User)
-                        .FirstOrDefaultAsync(h => h.Id == habitId && h.UserId == userId && h.IsActive);
+                    var habit = await _unitOfWork.Habits.GetByIdWithUserAsync(habitId);
 
-                    if (habit == null)
+                    if (habit == null || habit.UserId != userId || !habit.IsActive)
                     {
-                        return new GameReward { Success = false, Message = "Habit not found or inactive" };
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return new GameReward { Success = false, Message = "Habit not found or inactive"};
                     }
 
                     if (!await CanCompleteHabitTodayAsync(habitId))
                     {
-                        return new GameReward { Success = false, Message = "Habit already completed today" };
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return new GameReward { Success = false, Message = "Habit already completed today"};
                     }
 
                     if (habit.User.Level < 1)
@@ -70,7 +70,8 @@ namespace HabitRPG.Api.Services
 
                     if (habit.User.TotalXP > MAX_XP - xpGained)
                     {
-                        return new GameReward { Success = false, Message = "Maximum XP limit reached" };
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return new GameReward { Success = false, Message = "Maximum XP limit reached"};
                     }
 
                     habit.User.TotalXP += xpGained;
@@ -91,7 +92,7 @@ namespace HabitRPG.Api.Services
                     var streakResult = await UpdateHabitStreakAsync(habit);
                     if (!streakResult.Success)
                     {
-                        await transaction.RollbackAsync();
+                        await _unitOfWork.RollbackTransactionAsync();
                         return new GameReward { Success = false, Message = streakResult.Message };
                     }
 
@@ -99,15 +100,14 @@ namespace HabitRPG.Api.Services
                     var today = utcNow.Date;
                     var tomorrow = today.AddDays(1);
 
-                    var existingLog = await _db.CompletionLogs
-                        .FirstOrDefaultAsync(cl => cl.HabitId == habitId &&
-                                                cl.CompletedAt >= today &&
-                                                cl.CompletedAt < tomorrow);
+                    var completions = await _unitOfWork.CompletionLogs
+                        .GetCompletionsByDateRangeAsync(habitId, today, tomorrow.AddTicks(-1));
+                    var existingLog = completions.FirstOrDefault();
 
                     if (existingLog != null)
                     {
-                        await transaction.RollbackAsync();
-                        return new GameReward { Success = false, Message = "Habit already completed today" };
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return new GameReward { Success = false, Message = "Habit already completed today"};
                     }
 
                     var completionLog = new CompletionLog
@@ -116,11 +116,13 @@ namespace HabitRPG.Api.Services
                         CompletedAt = DateTime.UtcNow
                     };
 
-                    _db.CompletionLogs.Add(completionLog);
-                    await _db.SaveChangesAsync();
-                    await transaction.CommitAsync();
+                    await _unitOfWork.CompletionLogs.AddAsync(completionLog);
+                    await _unitOfWork.SaveChangesAsync();
+                    await _unitOfWork.CommitTransactionAsync();
 
                     _logger.LogInformation("User {UserId} completed habit {HabitId}, gained {XP} XP", userId, habitId, xpGained);
+
+                    var canCompleteToday = await CanCompleteHabitTodayAsync(habitId);
 
                     return new GameReward
                     {
@@ -134,20 +136,25 @@ namespace HabitRPG.Api.Services
                         NewXp = habit.User.XP,
                         NewTotalXp = habit.User.TotalXP,
                         NewStreak = habit.CurrentStreak,
-                        UpdatedHabit = MapToHabitDto(habit, false)
+                        UpdatedHabit = MapToHabitDto(habit, canCompleteToday)
                     };
                 }
                 catch (Exception ex)
                 {
-                    await transaction.RollbackAsync();
+                    await _unitOfWork.RollbackTransactionAsync();
                     _logger.LogError(ex, "Error completing habit {HabitId} for user {UserId}", habitId, userId);
-                    return new GameReward
-                    {
-                        Success = false,
-                        Message = "An error occurred while completing the habit. Please try again."
-                    };
+                    throw;
                 }
-            });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error completing habit {HabitId} for user {UserId}", habitId, userId);
+                return new GameReward
+                {
+                    Success = false,
+                    Message = "An error occurred while completing the habit. Please try again."
+                };
+            }
         }
 
         public int CalculateXpForHabit(HabitDifficulty difficulty)
@@ -182,9 +189,7 @@ namespace HabitRPG.Api.Services
             }
 
             if (level > MAX_LEVEL)
-            {
                 level = MAX_LEVEL;
-            }
 
             return (level - 1) * XP_PER_LEVEL;
         }
@@ -192,21 +197,11 @@ namespace HabitRPG.Api.Services
         public async Task<bool> CanCompleteHabitTodayAsync(int habitId)
         {
             if (habitId <= 0)
-            {
                 return false;
-            }
 
             try
             {
-                var today = DateTime.UtcNow.Date;
-                var todayEnd = today.AddDays(1).AddTicks(-1);
-
-                var completedToday = await _db.CompletionLogs
-                    .AnyAsync(cl => cl.HabitId == habitId &&
-                                   cl.CompletedAt >= today &&
-                                   cl.CompletedAt <= todayEnd);
-
-                return !completedToday;
+                return !await _unitOfWork.CompletionLogs.IsCompletedTodayAsync(habitId);
             }
             catch (Exception ex)
             {
@@ -222,10 +217,7 @@ namespace HabitRPG.Api.Services
                 var today = DateTime.UtcNow.Date;
                 var yesterday = today.AddDays(-1);
 
-                var lastCompletion = await _db.CompletionLogs
-                    .Where(cl => cl.HabitId == habit.Id && cl.CompletedAt.Date < today)
-                    .OrderByDescending(cl => cl.CompletedAt)
-                    .FirstOrDefaultAsync();
+                var lastCompletion = await _unitOfWork.CompletionLogs.GetLastCompletionBeforeTodayAsync(habit.Id);
 
                 if (lastCompletion == null)
                     habit.CurrentStreak = 1;
@@ -253,6 +245,8 @@ namespace HabitRPG.Api.Services
                     habit.BestStreak = habit.CurrentStreak;
 
                 habit.LastCompletedAt = DateTime.UtcNow;
+
+                _unitOfWork.Habits.Update(habit);
 
                 return (true, string.Empty);
             }

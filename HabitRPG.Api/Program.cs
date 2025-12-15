@@ -7,6 +7,7 @@ using HabitRPG.Api.Services;
 using HabitRPG.Api.Extensions;
 using HabitRPG.Api.Middleware;
 using DotNetEnv;
+using System.Diagnostics.Eventing.Reader;
 
 Env.Load();
 
@@ -61,7 +62,12 @@ builder.Services.AddSwaggerGen(options =>
 var environment = builder.Environment.EnvironmentName;
 
 string connectionString;
-if (environment == "Development")
+if (environment == "Testing")
+{
+    connectionString = "dummy-connection-string-for-testing";
+    Console.WriteLine("Using in-memory database for testing");
+}
+else if (environment == "Development")
 {
     connectionString = Environment.GetEnvironmentVariable("DEV_DATABASE_CONNECTION");
     if (string.IsNullOrEmpty(connectionString))
@@ -86,23 +92,26 @@ else
     Console.WriteLine($"Using PostgreSQL database (Neon Dev) for environment: {environment}");
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+if (environment != "Testing")
 {
-    options.UseNpgsql(connectionString, npgsqlOptions =>
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
     {
-        npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorCodesToAdd: null);
-        npgsqlOptions.CommandTimeout(30);
+        options.UseNpgsql(connectionString, npgsqlOptions =>
+        {
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null);
+            npgsqlOptions.CommandTimeout(30);
+        });
+        
+        if (environment == "Development")
+        {
+            options.EnableSensitiveDataLogging();
+            options.EnableDetailedErrors();
+        }
     });
-    
-    if (environment == "Development")
-    {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
+}
 
 var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
     ?? builder.Configuration["JwtSettings:SecretKey"];
@@ -196,41 +205,46 @@ app.MapGet("/health", () => new {
 
 app.UseStatusCodePages();
 
-using (var scope = app.Services.CreateScope())
+if (environment != "Testing")
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-    try
+    using (var scope = app.Services.CreateScope())
     {
-        Console.WriteLine($"Starting {environment} database operations...");
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var canConnect = await context.Database.CanConnectAsync(cts.Token);
-        Console.WriteLine($"Can connect to database: {canConnect}");
-
-        if (!canConnect)
+        try
         {
-            throw new InvalidOperationException($"Cannot connect to {environment} database");
+            Console.WriteLine($"Starting {environment} database operations...");
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var canConnect = await context.Database.CanConnectAsync(cts.Token);
+            Console.WriteLine($"Can connect to database: {canConnect}");
+
+            if (!canConnect)
+            {
+                throw new InvalidOperationException($"Cannot connect to {environment} database");
+            }
+
+            Console.WriteLine("Applying migrations to PostgreSQL database...");
+            await context.Database.MigrateAsync(cts.Token);
+            Console.WriteLine($"{environment} database migrations applied successfully");
+
+            var userCount = await context.Users.CountAsync(cts.Token);
+            Console.WriteLine($"Database verified. User count: {userCount}");
+
         }
-
-        Console.WriteLine("Applying migrations to PostgreSQL database...");
-        await context.Database.MigrateAsync(cts.Token);
-        Console.WriteLine($"{environment} database migrations applied successfully");
-
-        var userCount = await context.Users.CountAsync(cts.Token);
-        Console.WriteLine($"Database verified. User count: {userCount}");
-
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"{environment} database operation failed: {ex.Message}");
-        if (ex.InnerException != null)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+            Console.WriteLine($"{environment} database operation failed: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+            }
+            throw;
         }
-        throw;
     }
 }
 
 Console.WriteLine("Starting web server...");
 app.Run();
+
+public partial class Program { }

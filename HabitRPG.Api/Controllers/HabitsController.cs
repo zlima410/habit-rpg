@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
 using System.ComponentModel.DataAnnotations;
 
 namespace HabitRPG.Api.Controllers
@@ -15,14 +14,14 @@ namespace HabitRPG.Api.Controllers
     [Authorize]
     public class HabitsController : ControllerBase
     {
-        private readonly ApplicationDbContext _db;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IGameService _gameService;
         private readonly ILogger<HabitsController> _logger;
         private const int MAX_HABITS_PER_USER = 100;
 
-        public HabitsController(ApplicationDbContext db, IGameService gameService, ILogger<HabitsController> logger)
+        public HabitsController(IUnitOfWork unitOfWork, IGameService gameService, ILogger<HabitsController> logger)
         {
-            _db = db;
+            _unitOfWork = unitOfWork;
             _gameService = gameService;
             _logger = logger;
         }
@@ -56,17 +55,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var query = _db.Habits.Where(h => h.UserId == userId.Value);
-
-                if (!includeInactive)
-                {
-                    query = query.Where(h => h.IsActive);
-                }
-
-                var habits = await query
-                    .OrderByDescending(h => h.CreatedAt)
-                    .Take(1000)
-                    .ToListAsync();
+                var habits = await _unitOfWork.Habits.GetByUserIdAsync(userId.Value, includeInactive);
 
                 var habitDtos = new List<HabitDto>();
 
@@ -133,16 +122,12 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var activeHabitsCount = await _db.Habits
-                    .CountAsync(h => h.UserId == userId.Value && h.IsActive);
+                var activeHabitsCount = await _unitOfWork.Habits.GetActiveCountByUserIdAsync(userId.Value);
 
                 if (activeHabitsCount >= MAX_HABITS_PER_USER)
                     return BadRequest(new { message = $"Maximum number of habits ({MAX_HABITS_PER_USER}) reached" });
 
-                var duplicateExists = await _db.Habits
-                    .AnyAsync(h => h.UserId == userId.Value &&
-                                  h.IsActive &&
-                                  h.Title.ToLower() == request.Title.Trim().ToLower());
+                var duplicateExists = await _unitOfWork.Habits.TitleExistsForUserAsync(userId.Value, request.Title.Trim());
 
                 if (duplicateExists)
                     return BadRequest(new { message = "A habit with this title already exists" });
@@ -157,8 +142,8 @@ namespace HabitRPG.Api.Controllers
                     CreatedAt = DateTime.UtcNow
                 };
 
-                _db.Habits.Add(habit);
-                await _db.SaveChangesAsync();
+                await _unitOfWork.Habits.AddAsync(habit);
+                await _unitOfWork.SaveChangesAsync();
 
                 var canCompleteToday = await _gameService.CanCompleteHabitTodayAsync(habit.Id);
 
@@ -181,15 +166,10 @@ namespace HabitRPG.Api.Controllers
 
                 return CreatedAtAction(nameof(GetHabit), new { id = habit.Id }, habitDto);
             }
-            catch (DbUpdateException ex)
-            {
-                _logger.LogError(ex, "Database error creating habit for user {UserId}", userId);
-                return StatusCode(500, new { message = "An error occurred while creating the habit" });
-            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating habit for user {UserId}", userId);
-                return StatusCode(500, new { message = "An unexpected error occurred" });
+                return StatusCode(500, new { message = "An error occurred while creating the habit" });
             }
         }
 
@@ -205,8 +185,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var habit = await _db.Habits
-                    .FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
+                var habit = await _unitOfWork.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
 
                 if (habit == null)
                     return NotFound(new { message = "Habit not found" });
@@ -270,8 +249,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var habit = await _db.Habits
-                    .FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
+                var habit = await _unitOfWork.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
 
                 if (habit == null)
                     return NotFound(new { message = "Habit not found" });
@@ -279,16 +257,11 @@ namespace HabitRPG.Api.Controllers
                 if (!habit.IsActive)
                     return BadRequest(new { message = "Cannot update inactive habit" });
 
-                var originalTitle = habit.Title;
                 var hasChanges = false;
 
                 if (!string.IsNullOrEmpty(request.Title) && request.Title.Trim() != habit.Title)
                 {
-                    var duplicateExists = await _db.Habits
-                        .AnyAsync(h => h.UserId == userId.Value &&
-                                      h.IsActive &&
-                                      h.Id != id &&
-                                      h.Title.ToLower() == request.Title.Trim().ToLower());
+                    var duplicateExists = await _unitOfWork.Habits.TitleExistsForUserAsync(userId.Value, request.Title.Trim(), id);
 
                     if (duplicateExists)
                         return BadRequest(new { message = "A habit with this title already exists" });
@@ -320,21 +293,17 @@ namespace HabitRPG.Api.Controllers
                     return NoContent();
                 }
 
-                await _db.SaveChangesAsync();
+                _unitOfWork.Habits.Update(habit);
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Updated habit {HabitId} for user {UserId}", id, userId);
 
                 return NoContent();
             }
-            catch (DbUpdateException ex)
-            {
-                _logger.LogError(ex, "Database error updating habit {HabitId} for user {UserId}", id, userId);
-                return StatusCode(500, new { message = "An error occurred while updating the habit" });
-            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating habit {HabitId} for user {UserId}", id, userId);
-                return StatusCode(500, new { message = "An unexpected error occurred" });
+                return StatusCode(500, new { message = "An error occurred while updating the habit" });
             }
         }
 
@@ -350,8 +319,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var habit = await _db.Habits
-                    .FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
+                var habit = await _unitOfWork.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
 
                 if (habit == null)
                     return NotFound(new { message = "Habit not found" });
@@ -360,21 +328,17 @@ namespace HabitRPG.Api.Controllers
                     return BadRequest(new { message = "Habit is already deleted" });
 
                 habit.IsActive = false;
-                await _db.SaveChangesAsync();
+                _unitOfWork.Habits.Update(habit);
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Soft deleted habit {HabitId} for user {UserId}", id, userId);
 
                 return NoContent();
             }
-            catch (DbUpdateException ex)
-            {
-                _logger.LogError(ex, "Database error deleting habit {HabitId} for user {UserId}", id, userId);
-                return StatusCode(500, new { message = "An error occurred while deleting the habit" });
-            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting habit {HabitId} for user {UserId}", id, userId);
-                return StatusCode(500, new { message = "An unexpected error occurred" });
+                return StatusCode(500, new { message = "An error occurred while deleting the habit" });
             }
         }
 
@@ -394,34 +358,38 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                using var transaction = await _db.Database.BeginTransactionAsync();
+                await _unitOfWork.BeginTransactionAsync();
 
-                var habit = await _db.Habits
-                    .Include(h => h.CompletionLogs)
-                    .FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
+                var habit = await _unitOfWork.Habits.GetByIdWithUserAndCompletionsAsync(id);
 
-                if (habit == null)
+                if (habit == null || habit.UserId != userId.Value)
                     return NotFound(new { message = "Habit not found" });
 
-                if (habit.CompletionLogs.Any())
-                    _db.CompletionLogs.RemoveRange(habit.CompletionLogs);
+                var completionCount = habit.CompletionLogs?.Count ?? 0;
 
-                _db.Habits.Remove(habit);
+                if (completionCount > 0)
+                {
+                    var completionLogs = habit.CompletionLogs!.ToList();
+                    _unitOfWork.CompletionLogs.RemoveRange(completionLogs);
+                }
 
-                await _db.SaveChangesAsync();
-                await transaction.CommitAsync();
+                _unitOfWork.Habits.Remove(habit);
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
 
                 _logger.LogInformation("Permanently deleted habit {HabitId} and {CompletionCount} completion logs for user {UserId}",
-                    id, habit.CompletionLogs.Count, userId);
+                    id, completionCount, userId);
 
                 return Ok(new
                 {
                     message = "Habit permanently deleted",
-                    deletedCompletions = habit.CompletionLogs.Count
+                    deletedCompletions = completionCount
                 });
             }
             catch (Exception ex)
             {
+                await _unitOfWork.RollbackTransactionAsync();
                 _logger.LogError(ex, "Error permanently deleting habit {HabitId} for user {UserId}", id, userId);
                 return StatusCode(500, new { message = "An error occurred while permanently deleting the habit" });
             }
@@ -448,11 +416,9 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                using var transaction = await _db.Database.BeginTransactionAsync();
+                await _unitOfWork.BeginTransactionAsync();
 
-                var habits = await _db.Habits
-                    .Where(h => request.HabitIds.Contains(h.Id) && h.UserId == userId.Value)
-                    .ToListAsync();
+                var habits = await _unitOfWork.Habits.GetByIdsForUserAsync(userId.Value, request.HabitIds);
 
                 if (!habits.Any())
                     return NotFound(new { message = "No habits found to delete" });
@@ -466,24 +432,23 @@ namespace HabitRPG.Api.Controllers
                         return BadRequest(new { message = "Permanent bulk deletion must be confirmed with 'DELETE'" });
 
                     var habitIds = habits.Select(h => h.Id).ToList();
-                    var completionLogs = await _db.CompletionLogs
-                        .Where(cl => habitIds.Contains(cl.HabitId))
-                        .ToListAsync();
+                    var completionLogs = await _unitOfWork.CompletionLogs
+                        .FindAsync(cl => habitIds.Contains(cl.HabitId));
 
-                    _db.CompletionLogs.RemoveRange(completionLogs);
-                    _db.Habits.RemoveRange(habits);
+                    _unitOfWork.CompletionLogs.RemoveRange(completionLogs);
+                    _unitOfWork.Habits.RemoveRange(habits);
 
-                    await _db.SaveChangesAsync();
-                    await transaction.CommitAsync();
+                    await _unitOfWork.SaveChangesAsync();
+                    await _unitOfWork.CommitTransactionAsync();
 
                     _logger.LogInformation("Permanently bulk deleted {HabitCount} habits and {CompletionCount} completion logs for user {UserId}",
-                        habits.Count, completionLogs.Count, userId);
+                        habits.Count(), completionLogs.Count(), userId);
 
                     return Ok(new
                     {
-                        message = $"Successfully deleted {habits.Count} habits permanently",
-                        deletedHabits = habits.Count,
-                        deletedCompletions = completionLogs.Count,
+                        message = $"Successfully deleted {habits.Count()} habits permanently",
+                        deletedHabits = habits.Count(),
+                        deletedCompletions = completionLogs.Count(),
                         notFound = notFoundIds
                     });
                 }
@@ -492,21 +457,23 @@ namespace HabitRPG.Api.Controllers
                     foreach (var habit in habits)
                         habit.IsActive = false;
 
-                    await _db.SaveChangesAsync();
-                    await transaction.CommitAsync();
+                    _unitOfWork.Habits.UpdateRange(habits);
+                    await _unitOfWork.SaveChangesAsync();
+                    await _unitOfWork.CommitTransactionAsync();
 
-                    _logger.LogInformation("Soft bulk deleted {HabitCount} habits for user {UserId}", habits.Count, userId);
+                    _logger.LogInformation("Soft bulk deleted {HabitCount} habits for user {UserId}", habits.Count(), userId);
 
                     return Ok(new
                     {
-                        message = $"Successfully deactivated {habits.Count} habits",
-                        deactivatedHabits = habits.Count,
+                        message = $"Successfully deactivated {habits.Count()} habits",
+                        deactivatedHabits = habits.Count(),
                         notFound = notFoundIds
                     });
                 }
             }
             catch (Exception ex)
             {
+                await _unitOfWork.RollbackTransactionAsync();
                 _logger.LogError(ex, "Error bulk deleting habits for user {UserId}", userId);
                 return StatusCode(500, new { message = "An error occurred during bulk deletion" });
             }
@@ -524,8 +491,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var habitExists = await _db.Habits
-                    .AnyAsync(h => h.Id == id && h.UserId == userId.Value && h.IsActive);
+                var habitExists = await _unitOfWork.Habits.IsActiveForUserAsync(id, userId.Value);
 
                 if (!habitExists)
                 {
@@ -566,8 +532,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var habit = await _db.Habits
-                    .FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
+                var habit = await _unitOfWork.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId.Value);
 
                 if (habit == null)
                     return NotFound(new { message = "Habit not found" });
@@ -575,8 +540,7 @@ namespace HabitRPG.Api.Controllers
                 if (habit.IsActive)
                     return BadRequest(new { message = "Habit is already active" });
 
-                var activeHabitsCount = await _db.Habits
-                    .CountAsync(h => h.UserId == userId.Value && h.IsActive);
+                var activeHabitsCount = await _unitOfWork.Habits.GetActiveCountByUserIdAsync(userId.Value);
 
                 if (activeHabitsCount >= MAX_HABITS_PER_USER)
                 {
@@ -584,7 +548,8 @@ namespace HabitRPG.Api.Controllers
                 }
 
                 habit.IsActive = true;
-                await _db.SaveChangesAsync();
+                _unitOfWork.Habits.Update(habit);
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Restored habit {HabitId} for user {UserId}", id, userId);
 
@@ -612,27 +577,26 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var activeHabitsCount = await _db.Habits
-                    .CountAsync(h => h.UserId == userId.Value && h.IsActive);
+                var activeHabitsCount = await _unitOfWork.Habits.GetActiveCountByUserIdAsync(userId.Value);
 
-                var habitsToRestore = await _db.Habits
-                    .Where(h => request.HabitIds.Contains(h.Id) && h.UserId == userId.Value && !h.IsActive)
-                    .ToListAsync();
+                var habitsToRestore = await _unitOfWork.Habits.GetInactiveByUserIdAsync(userId.Value);
+                habitsToRestore = habitsToRestore.Where(h => request.HabitIds.Contains(h.Id)).ToList();
 
-                if (activeHabitsCount + habitsToRestore.Count > MAX_HABITS_PER_USER)
+                if (activeHabitsCount + habitsToRestore.Count() > MAX_HABITS_PER_USER)
                     return BadRequest(new { message = $"Restoring these habits would exceed the maximum limit of {MAX_HABITS_PER_USER} active habits" });
 
                 foreach (var habit in habitsToRestore)
                     habit.IsActive = true;
 
-                await _db.SaveChangesAsync();
+                _unitOfWork.Habits.UpdateRange(habitsToRestore);
+                await _unitOfWork.SaveChangesAsync();
 
-                _logger.LogInformation("Bulk restored {HabitCount} habits for user {UserId}", habitsToRestore.Count, userId);
+                _logger.LogInformation("Bulk restored {HabitCount} habits for user {UserId}", habitsToRestore.Count(), userId);
 
                 return Ok(new
                 {
-                    message = $"Successfully restored {habitsToRestore.Count} habits",
-                    restoredHabits = habitsToRestore.Count
+                    message = $"Successfully restored {habitsToRestore.Count()} habits",
+                    restoredHabits = habitsToRestore.Count()
                 });
             }
             catch (Exception ex)
@@ -651,11 +615,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var deletedHabits = await _db.Habits
-                    .Where(h => h.UserId == userId.Value && !h.IsActive)
-                    .OrderByDescending(h => h.CreatedAt)
-                    .Take(100)
-                    .ToListAsync();
+                var deletedHabits = await _unitOfWork.Habits.GetInactiveByUserIdAsync(userId.Value);
 
                 var habitDtos = deletedHabits.Select(habit => new HabitDto
                 {

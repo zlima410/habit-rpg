@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
 using System.ComponentModel.DataAnnotations;
 
 namespace HabitRPG.Api.Controllers
@@ -13,13 +12,13 @@ namespace HabitRPG.Api.Controllers
     [Authorize]
     public class UserController : ControllerBase
     {
-        private readonly ApplicationDbContext _db;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IGameService _gameService;
         private readonly ILogger<UserController> _logger;
 
-        public UserController(ApplicationDbContext db, IGameService gameService, ILogger<UserController> logger)
+        public UserController(IUnitOfWork unitOfWork, IGameService gameService, ILogger<UserController> logger)
         {
-            _db = db;
+            _unitOfWork = unitOfWork;
             _gameService = gameService;
             _logger = logger;
         }
@@ -51,9 +50,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var user = await _db.Users
-                    .Include(u => u.Habits.Where(h => h.IsActive))
-                    .FirstOrDefaultAsync(u => u.Id == userId.Value);
+                var user = await _unitOfWork.Users.GetUserWithActiveHabitsAsync(userId.Value);
 
                 if (user == null)
                 {
@@ -65,7 +62,8 @@ namespace HabitRPG.Api.Controllers
                 {
                     _logger.LogWarning("User {UserId} has invalid level {Level}, correcting to 1", userId.Value, user.Level);
                     user.Level = 1;
-                    await _db.SaveChangesAsync();
+                    _unitOfWork.Users.Update(user);
+                    await _unitOfWork.SaveChangesAsync();
                 }
 
                 if (user.TotalXP < 0)
@@ -73,7 +71,8 @@ namespace HabitRPG.Api.Controllers
                     _logger.LogWarning("User {UserId} has negative total XP {TotalXP}, correcting to 0", userId.Value, user.TotalXP);
                     user.TotalXP = 0;
                     user.XP = 0;
-                    await _db.SaveChangesAsync();
+                    _unitOfWork.Users.Update(user);
+                    await _unitOfWork.SaveChangesAsync();
                 }
 
                 var calculatedLevel = _gameService.CalculateLevelFromTotalXp(user.TotalXP);
@@ -82,7 +81,8 @@ namespace HabitRPG.Api.Controllers
                     _logger.LogWarning("User {UserId} level mismatch. Stored: {StoredLevel}, Calculated: {CalculatedLevel}", 
                         userId.Value, user.Level, calculatedLevel);
                     user.Level = calculatedLevel;
-                    await _db.SaveChangesAsync();
+                    _unitOfWork.Users.Update(user);
+                    await _unitOfWork.SaveChangesAsync();
                 }
 
                 var currentLevelXpRequired = _gameService.GetXpRequiredForLevel(user.Level);
@@ -96,7 +96,8 @@ namespace HabitRPG.Api.Controllers
                 if (user.XP != correctCurrentXp)
                 {
                     user.XP = correctCurrentXp;
-                    await _db.SaveChangesAsync();
+                    _unitOfWork.Users.Update(user);
+                    await _unitOfWork.SaveChangesAsync();
                 }
 
                 var activeHabitsCount = user.Habits?.Count ?? 0;
@@ -105,8 +106,7 @@ namespace HabitRPG.Api.Controllers
                 var totalCompletions = 0;
 
                 if (habitIds.Any())
-                    totalCompletions = await _db.CompletionLogs
-                        .CountAsync(cl => habitIds.Contains(cl.HabitId));
+                    totalCompletions = await _unitOfWork.CompletionLogs.CountAsync(cl => habitIds.Contains(cl.HabitId));
 
                 var longestStreak = 0;
                 var currentActiveStreaks = 0;
@@ -154,26 +154,24 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId.Value);
+                var user = await _unitOfWork.Users.GetByIdAsync(userId.Value);
                 if (user == null)
                     return NotFound(new { message = "User not found" });
 
                 var startDate = DateTime.UtcNow.AddDays(-days).Date;
                 var endDate = DateTime.UtcNow.Date.AddDays(1).AddTicks(-1);
 
-                var habitIds = await _db.Habits
-                    .Where(h => h.UserId == userId.Value)
+                var habitIds = (await _unitOfWork.Habits.FindAsync(h => h.UserId == userId.Value))
                     .Select(h => h.Id)
-                    .ToListAsync();
+                    .ToList();
 
                 var completions = new List<DateTime>();
                 if (habitIds.Any())
-                    completions = await _db.CompletionLogs
-                        .Where(cl => habitIds.Contains(cl.HabitId) && 
-                                    cl.CompletedAt >= startDate && 
-                                    cl.CompletedAt <= endDate)
-                        .Select(cl => cl.CompletedAt.Date)
-                        .ToListAsync();
+                {
+                    var completionDates = await _unitOfWork.CompletionLogs.GetCompletionDatesByHabitIdsAsync(
+                        habitIds, startDate, endDate);
+                    completions = completionDates.ToList();
+                }
 
                 var completionsByDay = completions
                     .GroupBy(d => d)
@@ -232,7 +230,7 @@ namespace HabitRPG.Api.Controllers
 
             try
             {
-                var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId.Value);
+                var user = await _unitOfWork.Users.GetByIdAsync(userId.Value);
                 if (user == null)
                     return NotFound(new { message = "User not found" });
 
@@ -240,8 +238,7 @@ namespace HabitRPG.Api.Controllers
 
                 if (!string.IsNullOrEmpty(request.Username) && request.Username.Trim() != user.Username)
                 {
-                    var usernameExists = await _db.Users
-                        .AnyAsync(u => u.Id != userId.Value && u.Username.ToLower() == request.Username.Trim().ToLower());
+                    var usernameExists = await _unitOfWork.Users.UsernameExistsAsync(request.Username.Trim());
 
                     if (usernameExists)
                         return BadRequest(new { message = "Username is already taken" });
@@ -253,21 +250,17 @@ namespace HabitRPG.Api.Controllers
                 if (!hasChanges)
                     return NoContent(); // No changes to save
 
-                await _db.SaveChangesAsync();
+                _unitOfWork.Users.Update(user);
+                await _unitOfWork.SaveChangesAsync();
 
                 _logger.LogInformation("Updated profile for user {UserId}", userId.Value);
 
                 return NoContent();
             }
-            catch (DbUpdateException ex)
-            {
-                _logger.LogError(ex, "Database error updating profile for user {UserId}", userId.Value);
-                return StatusCode(500, new { message = "An error occurred while updating your profile" });
-            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating profile for user {UserId}", userId.Value);
-                return StatusCode(500, new { message = "An unexpected error occurred" });
+                return StatusCode(500, new { message = "An error occurred while updating your profile" });
             }
         }
 

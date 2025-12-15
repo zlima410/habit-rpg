@@ -1,28 +1,34 @@
 using Xunit;
 using FluentAssertions;
 using Moq;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
-using HabitRPG.Api.Data;
 using HabitRPG.Api.Models;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.DTOs;
+using HabitRPG.Api.Repositories;
 using HabitRPG.Api.Tests.Helpers;
 
 namespace HabitRPG.Api.Tests.Services
 {
-    public class GameServiceTests
+    public class GameServiceTests : IDisposable
     {
         private readonly Mock<ILogger<GameService>> _loggerMock;
-        private readonly ApplicationDbContext _context;
+        private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+        private readonly Mock<IHabitRepository> _habitRepositoryMock;
+        private readonly Mock<ICompletionLogRepository> _completionLogRepositoryMock;
         private readonly GameService _gameService;
 
         public GameServiceTests()
         {
             _loggerMock = new Mock<ILogger<GameService>>();
-            _context = TestHelpers.CreateInMemoryContext();
-            _gameService = new GameService(_context, _loggerMock.Object);
+            _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _habitRepositoryMock = new Mock<IHabitRepository>();
+            _completionLogRepositoryMock = new Mock<ICompletionLogRepository>();
+
+            _unitOfWorkMock.Setup(u => u.Habits).Returns(_habitRepositoryMock.Object);
+            _unitOfWorkMock.Setup(u => u.CompletionLogs).Returns(_completionLogRepositoryMock.Object);
+
+            _gameService = new GameService(_unitOfWorkMock.Object, _loggerMock.Object);
         }
 
         [Fact]
@@ -106,9 +112,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CanCompleteHabitTodayAsync_NoCompletionsToday_ReturnsTrue()
         {
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1);
-            _context.Habits.Add(habit);
-            await _context.SaveChangesAsync();
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
 
             var result = await _gameService.CanCompleteHabitTodayAsync(1);
 
@@ -118,12 +124,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CanCompleteHabitTodayAsync_AlreadyCompletedToday_ReturnsFalse()
         {
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1);
-            _context.Habits.Add(habit);
-
-            var completionLog = TestHelpers.CreateTestCompletionLog(habitId: 1);
-            _context.CompletionLogs.Add(completionLog);
-            await _context.SaveChangesAsync();
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(true);
 
             var result = await _gameService.CanCompleteHabitTodayAsync(1);
 
@@ -159,40 +162,74 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_HabitNotFound_ReturnsFailure()
         {
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(999))
+                .ReturnsAsync((Habit?)null);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.RollbackTransactionAsync()).Returns(Task.CompletedTask);
+
             var result = await _gameService.CompleteHabitAsync(1, 999);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Habit not found or inactive");
+            _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(), Times.Once);
         }
 
         [Fact]
         public async Task CompleteHabitAsync_AlreadyCompletedToday_ReturnsFailure()
         {
             var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-
             var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
-            _context.Habits.Add(habit);
+            
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(habit);
 
-            var completionLog = TestHelpers.CreateTestCompletionLog(habitId: 1);
-            _context.CompletionLogs.Add(completionLog);
-            await _context.SaveChangesAsync();
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(true);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.RollbackTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Habit already completed today");
+            _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(), Times.Once);
         }
 
         [Fact]
         public async Task CompleteHabitAsync_ValidHabit_ReturnsSuccess()
         {
             var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-
             var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
-            _context.Habits.Add(habit);
-            await _context.SaveChangesAsync();
+            habit.User = user;
+
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(habit);
+            
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetLastCompletionBeforeTodayAsync(1))
+                .ReturnsAsync((CompletionLog?)null);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetCompletionsByDateRangeAsync(It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new List<CompletionLog>());
+
+            _completionLogRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<CompletionLog>()))
+                .ReturnsAsync((CompletionLog log) => log);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
@@ -202,6 +239,9 @@ namespace HabitRPG.Api.Tests.Services
             result.NewLevel.Should().Be(1);
             result.NewStreak.Should().Be(1);
             result.UpdatedHabit.Should().NotBeNull();
+
+            _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(), Times.Once);
+            _completionLogRepositoryMock.Verify(r => r.AddAsync(It.IsAny<CompletionLog>()), Times.Once);
         }
 
         [Fact]
@@ -210,11 +250,32 @@ namespace HabitRPG.Api.Tests.Services
             var user = TestHelpers.CreateTestUser(id: 1);
             user.XP = 90;
             user.TotalXP = 90;
-            _context.Users.Add(user);
-
             var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
-            _context.Habits.Add(habit);
-            await _context.SaveChangesAsync();
+            habit.User = user;
+
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(habit);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetLastCompletionBeforeTodayAsync(1))
+                .ReturnsAsync((CompletionLog?)null);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetCompletionsByDateRangeAsync(It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new List<CompletionLog>());
+
+            _completionLogRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<CompletionLog>()))
+                .ReturnsAsync((CompletionLog log) => log);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
@@ -229,16 +290,36 @@ namespace HabitRPG.Api.Tests.Services
         public async Task CompleteHabitAsync_StreakContinues_UpdatesStreak()
         {
             var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-
             var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            habit.User = user;
             habit.CurrentStreak = 5;
             habit.BestStreak = 5;
-            _context.Habits.Add(habit);
 
             var yesterdayCompletion = TestHelpers.CreateTestCompletionLog(habitId: 1, completedAt: DateTime.UtcNow.AddDays(-1));
-            _context.CompletionLogs.Add(yesterdayCompletion);
-            await _context.SaveChangesAsync();
+            
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(habit);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetLastCompletionBeforeTodayAsync(1))
+                .ReturnsAsync(yesterdayCompletion);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetCompletionsByDateRangeAsync(It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new List<CompletionLog>());
+
+            _completionLogRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<CompletionLog>()))
+                .ReturnsAsync((CompletionLog log) => log);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
@@ -250,16 +331,36 @@ namespace HabitRPG.Api.Tests.Services
         public async Task CompleteHabitAsync_StreakBroken_ResetsStreak()
         {
             var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-
             var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            habit.User = user;
             habit.CurrentStreak = 5;
             habit.BestStreak = 5;
-            _context.Habits.Add(habit);
 
             var oldCompletion = TestHelpers.CreateTestCompletionLog(habitId: 1, completedAt: DateTime.UtcNow.AddDays(-3));
-            _context.CompletionLogs.Add(oldCompletion);
-            await _context.SaveChangesAsync();
+
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(habit);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetLastCompletionBeforeTodayAsync(1))
+                .ReturnsAsync(oldCompletion);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetCompletionsByDateRangeAsync(It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new List<CompletionLog>());
+
+            _completionLogRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<CompletionLog>()))
+                .ReturnsAsync((CompletionLog log) => log);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
@@ -271,11 +372,32 @@ namespace HabitRPG.Api.Tests.Services
         public async Task CompleteHabitAsync_DifferentDifficulties_GiveCorrectXp()
         {
             var user = TestHelpers.CreateTestUser(id: 1);
-            _context.Users.Add(user);
-
             var easyHabit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Easy);
-            _context.Habits.Add(easyHabit);
-            await _context.SaveChangesAsync();
+            easyHabit.User = user;
+
+            _habitRepositoryMock
+                .Setup(r => r.GetByIdWithUserAsync(1))
+                .ReturnsAsync(easyHabit);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.IsCompletedTodayAsync(1))
+                .ReturnsAsync(false);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetLastCompletionBeforeTodayAsync(1))
+                .ReturnsAsync((CompletionLog?)null);
+
+            _completionLogRepositoryMock
+                .Setup(r => r.GetCompletionsByDateRangeAsync(It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new List<CompletionLog>());
+
+            _completionLogRepositoryMock
+                .Setup(r => r.AddAsync(It.IsAny<CompletionLog>()))
+                .ReturnsAsync((CompletionLog log) => log);
+
+            _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
             var result = await _gameService.CompleteHabitAsync(1, 1);
 
@@ -285,8 +407,7 @@ namespace HabitRPG.Api.Tests.Services
 
         public void Dispose()
         {
-            _context.Database.EnsureDeleted();
-            _context.Dispose();
+
         }
     }
 }

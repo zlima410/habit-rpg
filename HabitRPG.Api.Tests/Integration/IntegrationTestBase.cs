@@ -32,8 +32,7 @@ namespace HabitRPG.Api.Tests.Integration
 
         protected async Task<string> GetAuthTokenAsync(string email = "test@example.com", string password = "password123")
         {
-            // Use DbContext directly to ensure data is saved to the shared in-memory database
-            var existingUser = await DbContext.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            var existingUser = await UnitOfWork.Users.GetByEmailAsync(email);
             if (existingUser == null)
             {
                 var user = new User
@@ -46,8 +45,8 @@ namespace HabitRPG.Api.Tests.Integration
                     TotalXP = 0,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.Users.Add(user);
-                await DbContext.SaveChangesAsync();
+                await UnitOfWork.Users.AddAsync(user);
+                await UnitOfWork.SaveChangesAsync();
             }
 
             var loginRequest = new LoginRequest
@@ -57,13 +56,13 @@ namespace HabitRPG.Api.Tests.Integration
             };
 
             var response = await Client.PostAsJsonAsync("/api/auth/login", loginRequest);
-            
+    
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 throw new HttpRequestException($"Login failed with status {response.StatusCode}: {errorContent}");
             }
-            
+    
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -88,10 +87,9 @@ namespace HabitRPG.Api.Tests.Integration
                 CreatedAt = DateTime.UtcNow
             };
 
-            // Use DbContext directly to ensure it's saved to the shared database
-            DbContext.Users.Add(user);
-            await DbContext.SaveChangesAsync();
-            
+            await UnitOfWork.Users.AddAsync(user);
+            await UnitOfWork.SaveChangesAsync();
+
             return user;
         }
 

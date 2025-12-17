@@ -6,6 +6,7 @@ using HabitRPG.Api.Data;
 using HabitRPG.Api.Services;
 using HabitRPG.Api.Extensions;
 using HabitRPG.Api.Middleware;
+using HabitRPG.Api.Configuration;
 using DotNetEnv;
 using System.Diagnostics.Eventing.Reader;
 
@@ -16,6 +17,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 builder.Services.AddValidation();
+
+var rateLimitConfigPath = builder.Environment.IsDevelopment()
+    ? "Configuration/rateLimits.json"
+    : "Configuration/rateLimits.json";
+
+builder.Configuration.AddJsonFile(rateLimitConfigPath, optional: false, reloadOnChange: true);
+
+builder.Configuration.AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+
+builder.Services.AddRateLimiting(builder.Configuration, builder.Environment);
 
 builder.Services.AddProblemDetails(options =>
 {
@@ -191,6 +202,8 @@ else
 }
 
 app.UseCors("AllowReactNative");
+app.UseRateLimiting();
+app.UseMiddleware<RateLimitLoggingMiddleware>();
 app.UseMiddleware<ValidationMiddleware>();
 app.UseHttpsRedirection();
 app.UseAuthentication();

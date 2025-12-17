@@ -13,7 +13,7 @@ namespace HabitRPG.Api.Middleware
             _logger = logger;
         }
 
-        public async Task InvokeAsyc(HttpContext context)
+        public async Task InvokeAsync(HttpContext context)
         {
             var stopwatch = Stopwatch.StartNew();
 

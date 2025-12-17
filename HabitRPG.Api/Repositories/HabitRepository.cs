@@ -10,7 +10,7 @@ namespace HabitRPG.Api.Repositories
         {
         }
 
-        public async Task<IEnumerable<Habit>> GetByUserIdAsync(int userId, bool includeInactive = false)
+        public async Task<IEnumerable<Habit>> GetByUserIdAsync(Guid userId, bool includeInactive = false)
         {
             var query = _dbSet.Where(h => h.UserId == userId);
 
@@ -23,7 +23,7 @@ namespace HabitRPG.Api.Repositories
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Habit>> GetActiveByUserIdAsync(int userId)
+        public async Task<IEnumerable<Habit>> GetActiveByUserIdAsync(Guid userId)
         {
             return await _dbSet
                 .Where(h => h.UserId == userId && h.IsActive)
@@ -31,7 +31,7 @@ namespace HabitRPG.Api.Repositories
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Habit>> GetInactiveByUserIdAsync(int userId)
+        public async Task<IEnumerable<Habit>> GetInactiveByUserIdAsync(Guid userId)
         {
             return await _dbSet
                 .Where(h => h.UserId == userId && !h.IsActive)
@@ -55,19 +55,19 @@ namespace HabitRPG.Api.Repositories
                 .FirstOrDefaultAsync(h => h.Id == habitId);
         }
 
-        public async Task<bool> ExistsForUserAsync(int habitId, int userId)
+        public async Task<bool> ExistsForUserAsync(int habitId, Guid userId)
         {
             return await _dbSet
                 .AnyAsync(h => h.Id == habitId && h.UserId == userId);
         }
 
-        public async Task<bool> IsActiveForUserAsync(int habitId, int userId)
+        public async Task<bool> IsActiveForUserAsync(int habitId, Guid userId)
         {
             return await _dbSet
                 .AnyAsync(h => h.Id == habitId && h.UserId == userId && h.IsActive);
         }
 
-        public async Task<bool> TitleExistsForUserAsync(int userId, string title, int? excludeHabitId = null)
+        public async Task<bool> TitleExistsForUserAsync(Guid userId, string title, int? excludeHabitId = null)
         {
             var query = _dbSet
                 .Where(h => h.UserId == userId &&
@@ -80,13 +80,13 @@ namespace HabitRPG.Api.Repositories
             return await query.AnyAsync();
         }
 
-        public async Task<int> GetActiveCountByUserIdAsync(int userId)
+        public async Task<int> GetActiveCountByUserIdAsync(Guid userId)
         {
             return await _dbSet
                 .CountAsync(h => h.UserId == userId && h.IsActive);
         }
 
-        public async Task<IEnumerable<Habit>> GetByIdsForUserAsync(int userId, IEnumerable<int> habitIds)
+        public async Task<IEnumerable<Habit>> GetByIdsForUserAsync(Guid userId, IEnumerable<int> habitIds)
         {
             return await _dbSet
                 .Where(h => habitIds.Contains(h.Id) && h.UserId == userId)

@@ -144,7 +144,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_InvalidUserId_ReturnsFailure()
         {
-            var result = await _gameService.CompleteHabitAsync(0, 1);
+            var result = await _gameService.CompleteHabitAsync(Guid.Empty, 1);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Invalid user ID");
@@ -153,7 +153,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_InvalidHabitId_ReturnsFailure()
         {
-            var result = await _gameService.CompleteHabitAsync(1, 0);
+            var testUserId = Guid.NewGuid();
+            var result = await _gameService.CompleteHabitAsync(testUserId, 0);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Invalid habit ID");
@@ -162,6 +163,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_HabitNotFound_ReturnsFailure()
         {
+            var testUserId = Guid.NewGuid();
             _habitRepositoryMock
                 .Setup(r => r.GetByIdWithUserAsync(999))
                 .ReturnsAsync((Habit?)null);
@@ -169,7 +171,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
             _unitOfWorkMock.Setup(u => u.RollbackTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 999);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 999);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Habit not found or inactive");
@@ -179,8 +181,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_AlreadyCompletedToday_ReturnsFailure()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Medium);
             
             _habitRepositoryMock
                 .Setup(r => r.GetByIdWithUserAsync(1))
@@ -193,7 +196,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.BeginTransactionAsync()).Returns(Task.CompletedTask);
             _unitOfWorkMock.Setup(u => u.RollbackTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeFalse();
             result.Message.Should().Be("Habit already completed today");
@@ -203,8 +206,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_ValidHabit_ReturnsSuccess()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Medium);
             habit.User = user;
 
             _habitRepositoryMock
@@ -231,7 +235,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
             _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeTrue();
             result.XpGained.Should().Be(10);
@@ -247,10 +251,11 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_LevelUp_ReturnsSuccessWithLevelUp()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
             user.XP = 90;
             user.TotalXP = 90;
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Medium);
             habit.User = user;
 
             _habitRepositoryMock
@@ -277,7 +282,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
             _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeTrue();
             result.LeveledUp.Should().BeTrue();
@@ -289,8 +294,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_StreakContinues_UpdatesStreak()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Medium);
             habit.User = user;
             habit.CurrentStreak = 5;
             habit.BestStreak = 5;
@@ -321,7 +327,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
             _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeTrue();
             result.NewStreak.Should().Be(6);
@@ -330,8 +336,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_StreakBroken_ResetsStreak()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            var habit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Medium);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
+            var habit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Medium);
             habit.User = user;
             habit.CurrentStreak = 5;
             habit.BestStreak = 5;
@@ -362,7 +369,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
             _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeTrue();
             result.NewStreak.Should().Be(1);
@@ -371,8 +378,9 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task CompleteHabitAsync_DifferentDifficulties_GiveCorrectXp()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
-            var easyHabit = TestHelpers.CreateTestHabit(id: 1, userId: 1, difficulty: HabitDifficulty.Easy);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
+            var easyHabit = TestHelpers.CreateTestHabit(id: 1, userId: testUserId, difficulty: HabitDifficulty.Easy);
             easyHabit.User = user;
 
             _habitRepositoryMock
@@ -399,7 +407,7 @@ namespace HabitRPG.Api.Tests.Services
             _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
             _unitOfWorkMock.Setup(u => u.CommitTransactionAsync()).Returns(Task.CompletedTask);
 
-            var result = await _gameService.CompleteHabitAsync(1, 1);
+            var result = await _gameService.CompleteHabitAsync(testUserId, 1);
 
             result.Success.Should().BeTrue();
             result.XpGained.Should().Be(5);

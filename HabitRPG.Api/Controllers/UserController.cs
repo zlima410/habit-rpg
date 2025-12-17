@@ -23,12 +23,12 @@ namespace HabitRPG.Api.Controllers
             _logger = logger;
         }
 
-        private int? GetCurrentUserId()
+        private Guid? GetCurrentUserId()
         {
             try
             {
                 var userIdClaim = User.FindFirst("userId")?.Value;
-                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId) || userId <= 0)
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId) || userId == Guid.Empty)
                 {
                     return null;
                 }

@@ -10,6 +10,11 @@ namespace HabitRPG.Api.Repositories
         {
         }
 
+        public new async Task<User?> GetByIdAsync(Guid id)
+        {
+            return await _dbSet.FindAsync(id);
+        }
+
         public async Task<User?> GetByEmailAsync(string email)
         {
             return await _dbSet
@@ -43,7 +48,7 @@ namespace HabitRPG.Api.Repositories
                 .AnyAsync(u => u.Username.ToLower() == username.ToLower());
         }
 
-        public async Task<User?> GetUserWithHabitsAsync(int userId, bool includeInactive = false)
+        public async Task<User?> GetUserWithHabitsAsync(Guid userId, bool includeInactive = false)
         {
             var query = _dbSet
                 .Include(u => u.Habits.Where(h => includeInactive || h.IsActive))
@@ -52,7 +57,7 @@ namespace HabitRPG.Api.Repositories
             return await query.FirstOrDefaultAsync();
         }
 
-        public async Task<User?> GetUserWithActiveHabitsAsync(int userId)
+        public async Task<User?> GetUserWithActiveHabitsAsync(Guid userId)
         {
             return await _dbSet
                 .Include(u => u.Habits.Where(h => h.IsActive))

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text;
 using HabitRPG.Api.Data;
 using HabitRPG.Api.Services;
@@ -170,6 +171,14 @@ builder.Services.AddScoped<IGameService, GameService>();
 
 builder.Services.AddRepositories();
 
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy())
+    .AddNpgSql(
+        connectionString,
+        name: "database",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
+        tags: new[] { "ready", "db" });
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactNative", policy =>
@@ -214,9 +223,46 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-app.MapGet("/health", () => new { 
-    status = "healthy", 
-    timestamp = DateTime.UtcNow,
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+
+        var result = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration.TotalMilliseconds
+            }),
+            totalDuration = report.TotalDuration.TotalMilliseconds,
+            timestamp = DateTime.UtcNow,
+            environment = app.Environment.EnvironmentName
+        };
+
+        await context.Response.WriteAsJsonAsync(result);
+    }
+});
+
+app.MapHealthChecks("/health/db", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Name == "database"
+});
+
+app.MapGet("/health", () => new
+{
+    status = "healthy",
+    timestmap = DateTime.UtcNow,
     environment = app.Environment.EnvironmentName
 });
 

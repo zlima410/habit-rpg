@@ -5,7 +5,7 @@ namespace HabitRPG.Api.Services
 {
     public interface IGameService
     {
-        Task<GameReward> CompleteHabitAsync(int userId, int habitId);
+        Task<GameReward> CompleteHabitAsync(Guid userId, int habitId);
         int CalculateXpForHabit(HabitDifficulty difficulty);
         int CalculateLevelFromTotalXp(int totalXp);
         int GetXpRequiredForLevel(int level);

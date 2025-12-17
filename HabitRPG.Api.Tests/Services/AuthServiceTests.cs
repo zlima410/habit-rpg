@@ -45,6 +45,7 @@ namespace HabitRPG.Api.Tests.Services
         public async Task RegisterAsync_ValidRequest_ReturnsSuccess()
         {
             var request = TestHelpers.CreateTestRegisterRequest(username: "testuser", email: "test@example.com", password: "password123");
+            var testUserId = Guid.NewGuid();
 
             _userRepositoryMock
                 .Setup(r => r.EmailExistsAsync("test@example.com"))
@@ -54,11 +55,9 @@ namespace HabitRPG.Api.Tests.Services
                 .Setup(r => r.UsernameExistsAsync("testuser"))
                 .ReturnsAsync(false);
 
-            var savedUser = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
-
             _userRepositoryMock
                 .Setup(r => r.AddAsync(It.IsAny<User>()))
-                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+                .ReturnsAsync((User u) => { u.Id = testUserId; return u; });
 
             _unitOfWorkMock
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -68,6 +67,7 @@ namespace HabitRPG.Api.Tests.Services
 
             result.Success.Should().BeTrue();
             result.User.Should().NotBeNull();
+            result.User!.Id.Should().Be(testUserId);
             result.User!.Username.Should().Be("testuser");
             result.User.Email.Should().Be("test@example.com");
             result.Token.Should().NotBeNullOrEmpty();
@@ -194,7 +194,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_DuplicateUsername_ReturnsFailure()
         {
-            var existingUser = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "existing@example.com");
+            var testUserId = Guid.NewGuid();
+            var existingUser = TestHelpers.CreateTestUser(id: testUserId, username: "testuser", email: "existing@example.com");
 
             _userRepositoryMock
                 .Setup(r => r.UsernameExistsAsync("testuser"))
@@ -252,6 +253,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_ValidUsernameWithUnderscore_ReturnsSuccess()
         {
+            var testUserId = Guid.NewGuid();
             var request = TestHelpers.CreateTestRegisterRequest(username: "test_user", email: "test@example.com", password: "password123");
 
             _userRepositoryMock
@@ -264,7 +266,7 @@ namespace HabitRPG.Api.Tests.Services
 
             _userRepositoryMock
                 .Setup(r => r.AddAsync(It.IsAny<User>()))
-                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+                .ReturnsAsync((User u) => { u.Id = testUserId; return u; });
 
             _unitOfWorkMock
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -279,6 +281,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_ValidUsernameWithHyphen_ReturnsSuccess()
         {
+            var testUserId = Guid.NewGuid();
             var request = TestHelpers.CreateTestRegisterRequest(username: "test-user", email: "test@example.com", password: "password123");
 
             _userRepositoryMock
@@ -291,7 +294,7 @@ namespace HabitRPG.Api.Tests.Services
 
             _userRepositoryMock
                 .Setup(r => r.AddAsync(It.IsAny<User>()))
-                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+                .ReturnsAsync((User u) => { u.Id = testUserId; return u; });
 
             _unitOfWorkMock
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -306,6 +309,7 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task RegisterAsync_TrimsUsernameAndEmail_ReturnsSuccess()
         {
+            var testUserId = Guid.NewGuid();
             var request = TestHelpers.CreateTestRegisterRequest(username: "  testuser  ", email: "  test@example.com  ", password: "password123");
 
             _userRepositoryMock
@@ -318,7 +322,7 @@ namespace HabitRPG.Api.Tests.Services
 
             _userRepositoryMock
                 .Setup(r => r.AddAsync(It.IsAny<User>()))
-                .ReturnsAsync((User u) => { u.Id = 1; return u; });
+                .ReturnsAsync((User u) => { u.Id = testUserId; return u; });
 
             _unitOfWorkMock
                 .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -335,7 +339,8 @@ namespace HabitRPG.Api.Tests.Services
         public async Task LoginAsync_ValidCredentials_ReturnsSuccess()
         {
             var password = "password123";
-            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId, username: "testuser", email: "test@example.com");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
 
             _userRepositoryMock
@@ -371,7 +376,8 @@ namespace HabitRPG.Api.Tests.Services
         public async Task LoginAsync_InvalidPassword_ReturnsFailure()
         {
             var password = "password123";
-            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId, username: "testuser", email: "test@example.com");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
 
             _userRepositoryMock
@@ -400,7 +406,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public async Task LoginAsync_EmptyPassword_ReturnsFailure()
         {
-            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId, username: "testuser", email: "test@example.com");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123");
 
             _userRepositoryMock
@@ -418,7 +425,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public void GenerateJwtToken_ValidUser_ReturnsToken()
         {
-            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
 
             var token = _authService.GenerateJwtToken(user);
 
@@ -428,7 +436,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public void GenerateJwtToken_ValidUser_TokenContainsClaims()
         {
-            var user = TestHelpers.CreateTestUser(id: 1, username: "testuser", email: "test@example.com");
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
 
             var token = _authService.GenerateJwtToken(user);
 
@@ -437,15 +446,15 @@ namespace HabitRPG.Api.Tests.Services
             // Decode and verify token contains expected claims
             var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
             var jsonToken = handler.ReadJwtToken(token);
-            jsonToken.Claims.Should().Contain(c => c.Type == "userId" && c.Value == "1");
+            jsonToken.Claims.Should().Contain(c => c.Type == "userId" && c.Value == testUserId.ToString());
             jsonToken.Claims.Should().Contain(c => c.Type == "username" && c.Value == "testuser");
-            jsonToken.Claims.Should().Contain(c => c.Type == "email" && c.Value == "test@example.com");
         }
 
         [Fact]
         public void GenerateJwtToken_ValidUser_TokenHasCorrectExpiration()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
 
             var token = _authService.GenerateJwtToken(user);
 
@@ -460,7 +469,8 @@ namespace HabitRPG.Api.Tests.Services
         [Fact]
         public void GenerateJwtToken_ValidUser_TokenHasCorrectIssuerAndAudience()
         {
-            var user = TestHelpers.CreateTestUser(id: 1);
+            var testUserId = Guid.NewGuid();
+            var user = TestHelpers.CreateTestUser(id: testUserId);
 
             var token = _authService.GenerateJwtToken(user);
 

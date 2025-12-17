@@ -21,9 +21,9 @@ namespace HabitRPG.Api.Services
             _logger = logger;
         }
 
-        public async Task<GameReward> CompleteHabitAsync(int userId, int habitId)
+        public async Task<GameReward> CompleteHabitAsync(Guid userId, int habitId)
         {
-            if (userId <= 0)
+            if (userId == Guid.Empty)
             {
                 return new GameReward { Success = false, Message = "Invalid user ID" };
             }

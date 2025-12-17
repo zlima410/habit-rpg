@@ -25,6 +25,10 @@ namespace HabitRPG.Api.Data
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.HasIndex(e => e.Username).IsUnique();
 
+                entity.Property(e => e.Id)
+                    .HasColumnType("uuid")
+                    .HasDefaultValueSql("gen_random_uuid()");
+
                 entity.Property(e => e.Username).HasMaxLength(50).IsRequired();
                 entity.Property(e => e.Email).IsRequired();
                 entity.Property(e => e.PasswordHash).IsRequired();

@@ -62,6 +62,7 @@ namespace HabitRPG.Api.Services
 
                 var user = new User
                 {
+                    Id = Guid.NewGuid(),
                     Username = trimmedUsername,
                     Email = lowerEmail,
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),

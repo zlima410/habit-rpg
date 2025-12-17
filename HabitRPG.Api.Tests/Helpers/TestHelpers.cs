@@ -18,11 +18,11 @@ namespace HabitRPG.Api.Tests.Helpers
             return new ApplicationDbContext(options);
         }
 
-        public static User CreateTestUser(int id = 1, string username = "testuser", string email = "test@example.com")
+        public static User CreateTestUser(Guid? id = null, string username = "testuser", string email = "test@example.com")
         {
             return new User
             {
-                Id = id,
+                Id = id ?? Guid.NewGuid(),
                 Username = username,
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
@@ -33,12 +33,12 @@ namespace HabitRPG.Api.Tests.Helpers
             };
         }
 
-        public static Habit CreateTestHabit(int id = 1, int userId = 1, HabitDifficulty difficulty = HabitDifficulty.Medium)
+        public static Habit CreateTestHabit(int id = 1, Guid? userId = null, HabitDifficulty difficulty = HabitDifficulty.Medium)
         {
             return new Habit
             {
                 Id = id,
-                UserId = userId,
+                UserId = userId ?? Guid.NewGuid(),
                 Title = "Test Habit",
                 Description = "Test Description",
                 Difficulty = difficulty,

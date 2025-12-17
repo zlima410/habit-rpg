@@ -92,7 +92,7 @@ namespace HabitRPG.Api.Tests.Integration
             return user;
         }
 
-        protected async Task<Habit> CreateTestHabitAsync(int userId, string title = "Test Habit", HabitDifficulty difficulty = HabitDifficulty.Medium)
+        protected async Task<Habit> CreateTestHabitAsync(Guid userId, string title = "Test Habit", HabitDifficulty difficulty = HabitDifficulty.Medium)
         {
             var habit = new Habit
             {
@@ -127,21 +127,21 @@ namespace HabitRPG.Api.Tests.Integration
             return log;
         }
 
-        protected async Task<T?> ReloadEntityViaUnitOfWorkAsync<T>(int id) where T : class
+        protected async Task<T?> ReloadEntityViaUnitOfWorkAsync<T>(object id) where T : class
         {
-            if (typeof(T) == typeof(User))
+            if (typeof(T) == typeof(User) && id is Guid userId)
             {
-                return await UnitOfWork.Users.GetByIdAsync(id) as T;
+                return await UnitOfWork.Users.GetByIdAsync(userId) as T;
             }
             
-            if (typeof(T) == typeof(Habit))
+            if (typeof(T) == typeof(Habit) && id is int habitId)
             {
-                return await UnitOfWork.Habits.GetByIdAsync(id) as T;
+                return await UnitOfWork.Habits.GetByIdAsync(habitId) as T;
             }
             
-            if (typeof(T) == typeof(CompletionLog))
+            if (typeof(T) == typeof(CompletionLog) && id is int logId)
             {
-                return await UnitOfWork.CompletionLogs.GetByIdAsync(id) as T;
+                return await UnitOfWork.CompletionLogs.GetByIdAsync(logId) as T;
             }
             
             return await DbContext.Set<T>().FindAsync(id);
@@ -152,7 +152,7 @@ namespace HabitRPG.Api.Tests.Integration
             return await UnitOfWork.Habits.GetByIdWithUserAsync(habitId);
         }
 
-        protected async Task<User?> ReloadUserWithHabitsAsync(int userId, bool includeInactive = false)
+        protected async Task<User?> ReloadUserWithHabitsAsync(Guid userId, bool includeInactive = false)
         {
             return await UnitOfWork.Users.GetUserWithHabitsAsync(userId, includeInactive);
         }

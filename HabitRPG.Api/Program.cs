@@ -18,6 +18,8 @@ builder.Services.AddControllers();
 
 builder.Services.AddValidation();
 
+builder.Services.AddRequestLogging();
+
 var rateLimitConfigPath = builder.Environment.IsDevelopment()
     ? "Configuration/rateLimits.json"
     : "Configuration/rateLimits.json";
@@ -200,6 +202,8 @@ else
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
+
+app.UseRequestLogging();
 
 app.UseCors("AllowReactNative");
 app.UseRateLimiting();

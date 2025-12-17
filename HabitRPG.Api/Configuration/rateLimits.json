@@ -1,0 +1,144 @@
+{
+  "IpRateLimiting": {
+    "EnableEndpointRateLimiting": true,
+    "StackBlockedRequests": false,
+    "RealIpHeader": "X-Real-IP",
+    "ClientIdHeader": "X-ClientId",
+    "HttpStatusCode": 429,
+    "IpWhitelist": [],
+    "EndpointWhitelist": ["GET:/health"],
+    "ClientWhitelist": [],
+    "GeneralRules": [
+      {
+        "Endpoint": "*",
+        "Period": "1m",
+        "Limit": 60
+      },
+      {
+        "Endpoint": "*",
+        "Period": "1h",
+        "Limit": 1000
+      }
+    ],
+    "EndpointRules": [
+      {
+        "Endpoint": "POST:/api/auth/register",
+        "Period": "1h",
+        "Limit": 5
+      },
+      {
+        "Endpoint": "POST:/api/auth/login",
+        "Period": "15m",
+        "Limit": 10
+      },
+      {
+        "Endpoint": "POST:/api/habits",
+        "Period": "1h",
+        "Limit": 50
+      },
+      {
+        "Endpoint": "GET:/api/habits",
+        "Period": "1m",
+        "Limit": 100
+      },
+      {
+        "Endpoint": "GET:/api/habits/{id}",
+        "Period": "1m",
+        "Limit": 100
+      },
+      {
+        "Endpoint": "PATCH:/api/habits/{id}",
+        "Period": "1h",
+        "Limit": 30
+      },
+      {
+        "Endpoint": "DELETE:/api/habits/{id}",
+        "Period": "1h",
+        "Limit": 20
+      },
+      {
+        "Endpoint": "DELETE:/api/habits/{id}/permanent",
+        "Period": "1h",
+        "Limit": 10
+      },
+      {
+        "Endpoint": "POST:/api/habits/{id}/complete",
+        "Period": "1m",
+        "Limit": 30
+      },
+      {
+        "Endpoint": "POST:/api/habits/{id}/restore",
+        "Period": "1h",
+        "Limit": 20
+      },
+      {
+        "Endpoint": "DELETE:/api/habits/bulk",
+        "Period": "1h",
+        "Limit": 10
+      },
+      {
+        "Endpoint": "PATCH:/api/habits/bulk/restore",
+        "Period": "1h",
+        "Limit": 10
+      },
+      {
+        "Endpoint": "GET:/api/habits/deleted",
+        "Period": "1m",
+        "Limit": 30
+      },
+      {
+        "Endpoint": "GET:/api/user/profile",
+        "Period": "1m",
+        "Limit": 60
+      },
+      {
+        "Endpoint": "GET:/api/user/stats",
+        "Period": "1m",
+        "Limit": 30
+      },
+      {
+        "Endpoint": "PATCH:/api/user/profile",
+        "Period": "1h",
+        "Limit": 20
+      }
+    ],
+    "QuotaExceededResponse": {
+      "Content": "{\"type\":\"https://tools.ietf.org/html/rfc6585#section-4\",\"title\":\"Too Many Requests\",\"status\":429,\"detail\":\"API rate limit exceeded. Maximum {0} requests per {1}.\",\"instance\":\"{2}\",\"retryAfter\":{3}}",
+      "ContentType": "application/json",
+      "StatusCode": 429
+    }
+  },
+  "IpRateLimitPolicies": {
+    "IpRules": [
+      {
+        "Ip": "127.0.0.1",
+        "Rules": [
+          {
+            "Endpoint": "*",
+            "Period": "1m",
+            "Limit": 1000
+          }
+        ]
+      },
+      {
+        "Ip": "::1",
+        "Rules": [
+          {
+            "Endpoint": "*",
+            "Period": "1m",
+            "Limit": 1000
+          }
+        ]
+      }
+    ]
+  },
+  "ClientRateLimiting": {
+    "EnableEndpointRateLimiting": false,
+    "StackBlockedRequests": false,
+    "ClientIdHeader": "X-ClientId",
+    "HttpStatusCode": 429
+  },
+  "ClientRateLimitPolicies": {
+    "ClientRules": []
+  }
+}

@@ -14,21 +14,35 @@ const isDevelopment = () => {
 };
 
 const getApiUrl = () => {
-    if (isDevelopment()) {
-        const localIP = process.env.ENV_PUBLIC_LOCAL_IP;
-
-        let apiUrl;
-        if (Platform.OS === 'ios')
-            apiUrl = process.env.EXPO_PUBLIC_API_URL_DEV_IP;
-        else
-            apiUrl = process.env.EXPO_PUBLIC_API_URL_DEV_IP || `http://${localIP}:5139/api`;
-        return apiUrl;
-    } else {
-        return process.env.EXPO_PUBLIC_API_URL_PROD;
+  if (isDevelopment()) {
+    if (Platform.OS === "ios") {
+      const iosUrl = "http://localhost:5139" || process.env.EXPO_PUBLIC_API_URL_DEV_IP;
+      console.log("📱 Using iOS API URL:", iosUrl);
+      return iosUrl;
     }
+
+    const androidUrl =
+      "http://localhost:5139" ||
+      (process.env.ENV_PUBLIC_LOCAL_IP ? `http://${process.env.ENV_PUBLIC_LOCAL_IP}:5139` : process.env.EXPO_PUBLIC_API_URL_DEV_IP);
+    console.log("🤖 Using Android API URL:", androidUrl);
+    return androidUrl;
+  } else {
+    const prodUrl = process.env.EXPO_PUBLIC_API_URL_PROD || "https://habitrpg.zlima.dev";
+    console.log("🌐 Using Production API URL:", prodUrl);
+    return prodUrl;
+  }
 };
 
 export const API_CONFIG = {
-    BASE_URL: getApiUrl(),
-    TIMEOUT: 10000,
+  BASE_URL: getApiUrl(),
+  TIMEOUT: 15000,
 };
+
+if (__DEV__) {
+  console.log("🔧 API Configuration:", {
+    BASE_URL: API_CONFIG.BASE_URL,
+    TIMEOUT: API_CONFIG.TIMEOUT,
+    PLATFORM: Platform.OS,
+    IS_DEV: isDevelopment(),
+  });
+}

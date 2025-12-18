@@ -12,14 +12,14 @@ export class TokenManager {
 
             await SecureStore.setItemAsync(this.TOKEN_KEY, token, {
               keychainService: "habitrpg_keychain",
-              requireAuthentication: true,
+              requireAuthentication: false,
               keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
             });
 
             console.log('🔐 Token stored securely');
         } catch (error) {
             console.error('❌ Error storing token:', error);
-            throw new Error('Failed to store authentication token');
+            console.warn("⚠️ Continuing without secure token storage");
         }
     }
 

@@ -1,94 +1,46 @@
-import { View, Text, StyleSheet, FlatList } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
-import { colors, spacing, borderRadius, fontSize } from "../constants/theme"
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { colors, spacing, borderRadius, fontSize } from "../constants/theme";
 
-export default function RecentAchievements() {
-  const achievements = [
-    {
-      id: "1",
-      title: "Week Warrior",
-      description: "Complete habits for 7 days straight",
-      icon: "trophy",
-      earned: true,
-    },
-    {
-      id: "2",
-      title: "Early Bird",
-      description: "Complete morning routine 5 times",
-      icon: "sunny",
-      earned: true,
-    },
-    {
-      id: "3",
-      title: "Consistency King",
-      description: "Maintain a 30-day streak",
-      icon: "medal",
-      earned: false,
-    },
-  ]
+interface XPProgressBarProps {
+  currentXP: number;
+  maxXP: number;
+}
 
-  const renderAchievement = ({ item }: { item: (typeof achievements)[0] }) => (
-    <View style={[styles.achievementItem, !item.earned && styles.lockedAchievement]}>
-      <Ionicons name={item.icon as any} size={24} color={item.earned ? colors.gold : colors.textMuted} />
-      <View style={styles.achievementText}>
-        <Text style={[styles.achievementTitle, !item.earned && styles.lockedText]}>{item.title}</Text>
-        <Text style={[styles.achievementDescription, !item.earned && styles.lockedText]}>{item.description}</Text>
-      </View>
-    </View>
-  )
+export default function XPProgressBar({ currentXP, maxXP }: XPProgressBarProps) {
+  const progress = maxXP > 0 ? Math.min((currentXP / maxXP) * 100, 100) : 0;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Achievements</Text>
-      <FlatList
-        data={achievements}
-        keyExtractor={(item) => item.id}
-        renderItem={renderAchievement}
-        scrollEnabled={false}
-      />
+      <View style={styles.progressBackground}>
+        <View style={[styles.progressFill, { width: `${progress}%` }]} />
+      </View>
+      <Text style={styles.xpText}>
+        {currentXP} / {maxXP} XP
+      </Text>
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    marginVertical: spacing.sm,
   },
-  title: {
-    fontSize: fontSize.lg,
-    fontWeight: "bold",
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
+  progressBackground: {
+    height: 12,
+    backgroundColor: colors.xpBarBackground,
+    borderRadius: borderRadius.sm,
+    overflow: "hidden",
   },
-  achievementItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.md,
-    backgroundColor: colors.surfaceBackground,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
+  progressFill: {
+    height: "100%",
+    backgroundColor: colors.xpBar,
+    borderRadius: borderRadius.sm,
   },
-  lockedAchievement: {
-    opacity: 0.5,
-  },
-  achievementText: {
-    marginLeft: spacing.md,
-    flex: 1,
-  },
-  achievementTitle: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  achievementDescription: {
+  xpText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    textAlign: "center",
     marginTop: spacing.xs,
   },
-  lockedText: {
-    color: colors.textMuted,
-  },
-})
+});

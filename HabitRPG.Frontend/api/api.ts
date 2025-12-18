@@ -9,7 +9,7 @@ import {
 } from '../types/types';
 
 const api = axios.create({
-    baseURL: API_CONFIG.BASE_URL,
+    baseURL: API_CONFIG.BASE_URL + "/api",
     timeout: API_CONFIG.TIMEOUT,
     headers: {
         'Content-Type': 'application/json',
@@ -61,7 +61,14 @@ const handleApiError = (error: AxiosError): ApiError => {
     if (error.response) {
         const data = error.response.data as any;
 
-        if (error.response.status === 400 && data.errors) {
+        if (data?.detail) {
+            return {
+                message: data.detail,
+                status: error.response.status
+            };
+        }
+
+        if (error.response.status === 400 && data?.errors) {
             const validationErrors = Object.values(data.errors).flat();
             return {
                 message: validationErrors[0] as string || 'Validation error',
@@ -69,14 +76,28 @@ const handleApiError = (error: AxiosError): ApiError => {
             };
         }
 
-        const message = data?.detail || data?.message || data?.title || 'An error occurred';
+        if (data?.title) {
+            return {
+                message: data.title,
+                status: error.response.status
+            }
+        }
+
+        if (data?.message) {
+            return {
+                message: data.message,
+                status: error.response.status
+            }
+        }
+
         return {
-            message,
+            message: `Request failed with status ${error.response.status}`,
             status: error.response.status
-        };
+        }
     } else if (error.request) {
+        console.error("❌ Network error - no response:", error.message);
         return {
-            message: 'Network error. Please check your connection and ensure the server is running.',
+            message: 'Network error. Please check your connection and ensure the server is running at ' + API_CONFIG.BASE_URL,
             status: 0
         };
     } else {

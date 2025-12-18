@@ -495,7 +495,15 @@ namespace HabitRPG.Api.Controllers
 
                 if (!habitExists)
                 {
+                    _logger.LogWarning("Habit {HabitId} not found or inactive for user {UserId}", id, userId);
                     return NotFound(new { message = "Habit not found or inactive" });
+                }
+
+                var canCompleteToday = await _gameService.CanCompleteHabitTodayAsync(id);
+                if (!canCompleteToday)
+                {
+                    _logger.LogWarning("Habit {HabitId} already completed today for user {UserId}", id, userId);
+                    return BadRequest(new { message = "Habit already completed today" });
                 }
 
                 var result = await _gameService.CompleteHabitAsync(userId.Value, id);
@@ -505,7 +513,18 @@ namespace HabitRPG.Api.Controllers
                     _logger.LogWarning("Failed to complete habit {HabitId} for user {UserId}: {Message}",
                         id, userId, result.Message);
 
-                    return BadRequest(new { message = result.Message });
+                    if (result.Message.Contains("already completed"))
+                    {
+                        return BadRequest(new { message = result.Message });
+                    }
+                    else if (result.Message.Contains("not found") || result.Message.Contains("inactive"))
+                    {
+                        return NotFound(new { message = result.Message });
+                    }
+                    else
+                    {
+                        return BadRequest(new { message = result.Message });
+                    }
                 }
 
                 _logger.LogInformation("User {UserId} completed habit {HabitId}, gained {XP} XP",

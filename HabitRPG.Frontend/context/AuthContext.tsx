@@ -78,13 +78,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             console.log('🚀 Attempting login...');
             const response = await AuthAPI.login(data);
+
+            if (!response || !response.user) {
+                throw new Error('Invalid response from server');
+            }
+
             setUser(response.user);
 
             console.log('✅ User logged in successfully');
         } catch (error) {
             console.log('❌ Login failed:', error);
             const err = error as ApiError;
-            setError(err.message);
+            const errorMessage = err.message || "Login failed. Please check your credentials and try again.";
+            setError(errorMessage);
             throw error;
         } finally {
             setIsLoading(false);
@@ -98,13 +104,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             console.log('🚀 Attempting registration...');
             const response = await AuthAPI.register(data);
+
+            if (!response || !response.user) {
+              throw new Error("Invalid response from server");
+            }
+
             setUser(response.user);
 
             console.log('✅ User registered successfully');
         } catch (error) {
             console.log('❌ Registration failed:', error);
             const err = error as ApiError;
-            setError(err.message);
+             const errorMessage = err.message || "Registration failed. Please try again.";
+            setError(errorMessage);
             throw error;
         } finally {
             setIsLoading(false);

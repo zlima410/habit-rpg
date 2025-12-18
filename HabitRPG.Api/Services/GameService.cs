@@ -4,20 +4,23 @@ using HabitRPG.Api.DTOs;
 using HabitRPG.Api.Repositories;
 using System.Security.Cryptography;
 using FluentValidation.Validators;
+using HabitRPG.Api.Data;
 
 namespace HabitRPG.Api.Services
 {
     public class GameService : IGameService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ApplicationDbContext _context;
         private readonly ILogger<GameService> _logger;
         private const int XP_PER_LEVEL = 100;
         private const int MAX_LEVEL = 1000;
         private const int MAX_XP = 100_000_000;
 
-        public GameService(IUnitOfWork unitOfWork, ILogger<GameService> logger)
+        public GameService(IUnitOfWork unitOfWork, ApplicationDbContext context, ILogger<GameService> logger)
         {
             _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -33,128 +36,156 @@ namespace HabitRPG.Api.Services
                 return new GameReward { Success = false, Message = "Invalid habit ID" };
             }
 
-            try
-            {
-                await _unitOfWork.BeginTransactionAsync();
+            var strategy = _context.Database.CreateExecutionStrategy();
 
+            return await strategy.ExecuteAsync(async () =>
+            {
                 try
                 {
-                    var habit = await _unitOfWork.Habits.GetByIdWithUserAsync(habitId);
+                    await _unitOfWork.BeginTransactionAsync();
 
-                    if (habit == null || habit.UserId != userId || !habit.IsActive)
+                    try
+                    {
+                        var habit = await _unitOfWork.Habits.GetByIdWithUserAsync(habitId);
+
+                        if (habit == null)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            _logger.LogWarning("Habit {HabitId} not found", habitId);
+                            return new GameReward { Success = false, Message = "Habit not found" };
+                        }
+
+                        if (habit.UserId != userId)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            _logger.LogWarning("Habit {HabitId} does not belong to user {UserId}", habitId, userId);
+                            return new GameReward { Success = false, Message = "Habit not found or inactive" };
+                        }
+
+                        if (!habit.IsActive)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            _logger.LogWarning("Habit {HabitId} is inactive", habitId);
+                            return new GameReward { Success = false, Message = "Habit is inactive" };
+                        }
+
+                        if (habit.User == null)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            _logger.LogError("User not loaded for habit {HabitId}", habitId);
+                            return new GameReward { Success = false, Message = "Error loading user data" };
+                        }
+
+                        if (!await CanCompleteHabitTodayAsync(habitId))
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            _logger.LogWarning("Habit {HabitId} already completed today", habitId);
+                            return new GameReward { Success = false, Message = "Habit already completed today"};
+                        }
+
+                        if (habit.User.Level < 1)
+                        {
+                            _logger.LogWarning("User {UserId} has invalid level {Level}, resetting to 1", userId, habit.User.Level);
+                            habit.User.Level = 1;
+                        }
+
+                        if (habit.User.TotalXP < 0)
+                        {
+                            _logger.LogWarning("User {UserId} has negative total XP {TotalXP}, resetting to 0", userId, habit.User.TotalXP);
+                            habit.User.TotalXP = 0;
+                        }
+
+                        var xpGained = CalculateXpForHabit(habit.Difficulty);
+                        var oldLevel = habit.User.Level;
+
+                        if (habit.User.TotalXP > MAX_XP - xpGained)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            return new GameReward { Success = false, Message = "Maximum XP limit reached"};
+                        }
+
+                        habit.User.TotalXP += xpGained;
+                        var newLevel = CalculateLevelFromTotalXp(habit.User.TotalXP);
+
+                        if (newLevel > MAX_LEVEL)
+                        {
+                            newLevel = MAX_LEVEL;
+                            habit.User.TotalXP = GetXpRequiredForLevel(MAX_LEVEL);
+                        }
+
+                        var leveledUp = newLevel > oldLevel;
+                        habit.User.Level = newLevel;
+
+                        var currentLevelXpRequired = GetXpRequiredForLevel(habit.User.Level);
+                        habit.User.XP = habit.User.TotalXP - currentLevelXpRequired;
+
+                        var streakResult = await UpdateHabitStreakAsync(habit);
+                        if (!streakResult.Success)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            return new GameReward { Success = false, Message = streakResult.Message };
+                        }
+
+                        var utcNow = DateTime.UtcNow;
+                        var today = utcNow.Date;
+                        var tomorrow = today.AddDays(1);
+
+                        var completions = await _unitOfWork.CompletionLogs
+                            .GetCompletionsByDateRangeAsync(habitId, today, tomorrow.AddTicks(-1));
+                        var existingLog = completions.FirstOrDefault();
+
+                        if (existingLog != null)
+                        {
+                            await _unitOfWork.RollbackTransactionAsync();
+                            return new GameReward { Success = false, Message = "Habit already completed today"};
+                        }
+
+                        var completionLog = new CompletionLog
+                        {
+                            HabitId = habitId,
+                            CompletedAt = DateTime.UtcNow
+                        };
+
+                        await _unitOfWork.CompletionLogs.AddAsync(completionLog);
+                        await _unitOfWork.SaveChangesAsync();
+                        await _unitOfWork.CommitTransactionAsync();
+
+                        _logger.LogInformation("User {UserId} completed habit {HabitId}, gained {XP} XP", userId, habitId, xpGained);
+
+                        var canCompleteToday = await CanCompleteHabitTodayAsync(habitId);
+
+                        return new GameReward
+                        {
+                            Success = true,
+                            Message = leveledUp ?
+                                $"Incredible! You gained {xpGained} XP and reached level {newLevel}!" :
+                                $"Well done! You gained {xpGained} XP!",
+                            XpGained = xpGained,
+                            LeveledUp = leveledUp,
+                            NewLevel = habit.User.Level,
+                            NewXp = habit.User.XP,
+                            NewTotalXp = habit.User.TotalXP,
+                            NewStreak = habit.CurrentStreak,
+                            UpdatedHabit = MapToHabitDto(habit, canCompleteToday)
+                        };
+                    }
+                    catch (Exception ex)
                     {
                         await _unitOfWork.RollbackTransactionAsync();
-                        return new GameReward { Success = false, Message = "Habit not found or inactive"};
+                        _logger.LogError(ex, "Error completing habit {HabitId} for user {UserId}", habitId, userId);
+                        throw;
                     }
-
-                    if (!await CanCompleteHabitTodayAsync(habitId))
-                    {
-                        await _unitOfWork.RollbackTransactionAsync();
-                        return new GameReward { Success = false, Message = "Habit already completed today"};
-                    }
-
-                    if (habit.User.Level < 1)
-                    {
-                        _logger.LogWarning("User {UserId} has invalid level {Level}, resetting to 1", userId, habit.User.Level);
-                        habit.User.Level = 1;
-                    }
-
-                    if (habit.User.TotalXP < 0)
-                    {
-                        _logger.LogWarning("User {UserId} has negative total XP {TotalXP}, resetting to 0", userId, habit.User.TotalXP);
-                        habit.User.TotalXP = 0;
-                    }
-
-                    var xpGained = CalculateXpForHabit(habit.Difficulty);
-                    var oldLevel = habit.User.Level;
-
-                    if (habit.User.TotalXP > MAX_XP - xpGained)
-                    {
-                        await _unitOfWork.RollbackTransactionAsync();
-                        return new GameReward { Success = false, Message = "Maximum XP limit reached"};
-                    }
-
-                    habit.User.TotalXP += xpGained;
-                    var newLevel = CalculateLevelFromTotalXp(habit.User.TotalXP);
-
-                    if (newLevel > MAX_LEVEL)
-                    {
-                        newLevel = MAX_LEVEL;
-                        habit.User.TotalXP = GetXpRequiredForLevel(MAX_LEVEL);
-                    }
-
-                    var leveledUp = newLevel > oldLevel;
-                    habit.User.Level = newLevel;
-
-                    var currentLevelXpRequired = GetXpRequiredForLevel(habit.User.Level);
-                    habit.User.XP = habit.User.TotalXP - currentLevelXpRequired;
-
-                    var streakResult = await UpdateHabitStreakAsync(habit);
-                    if (!streakResult.Success)
-                    {
-                        await _unitOfWork.RollbackTransactionAsync();
-                        return new GameReward { Success = false, Message = streakResult.Message };
-                    }
-
-                    var utcNow = DateTime.UtcNow;
-                    var today = utcNow.Date;
-                    var tomorrow = today.AddDays(1);
-
-                    var completions = await _unitOfWork.CompletionLogs
-                        .GetCompletionsByDateRangeAsync(habitId, today, tomorrow.AddTicks(-1));
-                    var existingLog = completions.FirstOrDefault();
-
-                    if (existingLog != null)
-                    {
-                        await _unitOfWork.RollbackTransactionAsync();
-                        return new GameReward { Success = false, Message = "Habit already completed today"};
-                    }
-
-                    var completionLog = new CompletionLog
-                    {
-                        HabitId = habitId,
-                        CompletedAt = DateTime.UtcNow
-                    };
-
-                    await _unitOfWork.CompletionLogs.AddAsync(completionLog);
-                    await _unitOfWork.SaveChangesAsync();
-                    await _unitOfWork.CommitTransactionAsync();
-
-                    _logger.LogInformation("User {UserId} completed habit {HabitId}, gained {XP} XP", userId, habitId, xpGained);
-
-                    var canCompleteToday = await CanCompleteHabitTodayAsync(habitId);
-
-                    return new GameReward
-                    {
-                        Success = true,
-                        Message = leveledUp ?
-                            $"Incredible! You gained {xpGained} XP and reached level {newLevel}!" :
-                            $"Well done! You gained {xpGained} XP!",
-                        XpGained = xpGained,
-                        LeveledUp = leveledUp,
-                        NewLevel = habit.User.Level,
-                        NewXp = habit.User.XP,
-                        NewTotalXp = habit.User.TotalXP,
-                        NewStreak = habit.CurrentStreak,
-                        UpdatedHabit = MapToHabitDto(habit, canCompleteToday)
-                    };
                 }
                 catch (Exception ex)
                 {
-                    await _unitOfWork.RollbackTransactionAsync();
                     _logger.LogError(ex, "Error completing habit {HabitId} for user {UserId}", habitId, userId);
-                    throw;
+                    return new GameReward
+                    {
+                        Success = false,
+                        Message = "An error occurred while completing the habit. Please try again."
+                    };
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error completing habit {HabitId} for user {UserId}", habitId, userId);
-                return new GameReward
-                {
-                    Success = false,
-                    Message = "An error occurred while completing the habit. Please try again."
-                };
-            }
+            });
         }
 
         public int CalculateXpForHabit(HabitDifficulty difficulty)

@@ -17,9 +17,6 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { colors, spacing, borderRadius, fontSize } from "../constants/theme"
 import { useAuth } from "../context/AuthContext"
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sword, Shield, Star } from "lucide-react-native";
 
 interface AuthScreenProps {

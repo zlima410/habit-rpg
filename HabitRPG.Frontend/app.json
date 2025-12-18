@@ -33,7 +33,8 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": "Allow HabitRPG to access your Face ID biometric data."
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to access your Face ID biometric data."
         }
       ]
     ]

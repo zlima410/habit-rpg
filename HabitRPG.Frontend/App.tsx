@@ -15,6 +15,7 @@ import ProfileScreen from "./screens/ProfileScreen"
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import { colors } from "./constants/theme"
 import { HabitsProvider } from "./context/HabitsContext"
+import ErrorBoundaryWithReporting from "./components/ErrorBoundaryReporting"
 
 const Tab = createBottomTabNavigator()
 const Stack = createStackNavigator()
@@ -106,12 +107,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <HabitsProvider>
-          <AppContent />
-        </HabitsProvider>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundaryWithReporting enableReporting={true}>
+        <SafeAreaProvider>
+        <AuthProvider>
+            <HabitsProvider>
+            <AppContent />
+            </HabitsProvider>
+        </AuthProvider>
+        </SafeAreaProvider>
+    </ErrorBoundaryWithReporting>
   )
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import ScreenErrorBoundary from "../components/ScreenErrorBoundary";
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Plus, Filter, Archive, RefreshCw } from "lucide-react-native";
@@ -188,76 +189,78 @@ export default function HabitsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>My Habits</Text>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddHabit}>
-            <Plus size={18} color={colors.textPrimary} />
-            <Text style={styles.addButtonText}>Add</Text>
-          </TouchableOpacity>
+    <ScreenErrorBoundary screenName="Habits">
+        <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+            <View style={styles.titleRow}>
+            <Text style={styles.title}>My Habits</Text>
+            <TouchableOpacity style={styles.addButton} onPress={handleAddHabit}>
+                <Plus size={18} color={colors.textPrimary} />
+                <Text style={styles.addButtonText}>Add</Text>
+            </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterTabs}>
+            <TouchableOpacity
+                style={[styles.filterTab, !showInactive && styles.filterTabActive]}
+                onPress={() => handleTabSwitch(false)}
+            >
+                <Filter size={14} color={!showInactive ? colors.textPrimary : colors.textSecondary} />
+                <Text style={[styles.filterTabText, !showInactive && styles.filterTabTextActive]}>
+                Active ({activeHabits.length})
+                </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.filterTab, showInactive && styles.filterTabActive]}
+                onPress={() => handleTabSwitch(true)}
+            >
+                <Archive size={14} color={showInactive ? colors.textPrimary : colors.textSecondary} />
+                <Text style={[styles.filterTabText, showInactive && styles.filterTabTextActive]}>
+                Inactive ({inactiveHabits.length})
+                </Text>
+            </TouchableOpacity>
+            </View>
         </View>
 
-        <View style={styles.filterTabs}>
-          <TouchableOpacity
-            style={[styles.filterTab, !showInactive && styles.filterTabActive]}
-            onPress={() => handleTabSwitch(false)}
-          >
-            <Filter size={14} color={!showInactive ? colors.textPrimary : colors.textSecondary} />
-            <Text style={[styles.filterTabText, !showInactive && styles.filterTabTextActive]}>
-              Active ({activeHabits.length})
-            </Text>
-          </TouchableOpacity>
+        <View style={styles.content}>
+            <View style={styles.habitCard}>
+            <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{showInactive ? "Inactive Habits" : "Active Habits"}</Text>
+            </View>
 
-          <TouchableOpacity
-            style={[styles.filterTab, showInactive && styles.filterTabActive]}
-            onPress={() => handleTabSwitch(true)}
-          >
-            <Archive size={14} color={showInactive ? colors.textPrimary : colors.textSecondary} />
-            <Text style={[styles.filterTabText, showInactive && styles.filterTabTextActive]}>
-              Inactive ({inactiveHabits.length})
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.cardContent}>
+                {displayHabits.length > 0 ? (
+                <FlatList
+                    data={displayHabits}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={renderHabit}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                    />
+                    }
+                    contentContainerStyle={displayHabits.length === 0 ? styles.emptyListContainer : undefined}
+                    ItemSeparatorComponent={() => <View style={styles.separator} />}
+                />
+                ) : (
+                renderEmptyState()
+                )}
+            </View>
+            </View>
         </View>
-      </View>
 
-      <View style={styles.content}>
-        <View style={styles.habitCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>{showInactive ? "Inactive Habits" : "Active Habits"}</Text>
-          </View>
-
-          <View style={styles.cardContent}>
-            {displayHabits.length > 0 ? (
-              <FlatList
-                data={displayHabits}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={renderHabit}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={isRefreshing}
-                    onRefresh={onRefresh}
-                    tintColor={colors.primary}
-                    colors={[colors.primary]}
-                  />
-                }
-                contentContainerStyle={displayHabits.length === 0 ? styles.emptyListContainer : undefined}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-              />
-            ) : (
-              renderEmptyState()
-            )}
-          </View>
-        </View>
-      </View>
-
-      <CreateHabitModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={handleHabitCreated}
-      />
-    </SafeAreaView>
+        <CreateHabitModal
+            visible={showCreateModal}
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={handleHabitCreated}
+        />
+        </SafeAreaView>
+    </ScreenErrorBoundary>
   );
 }
 

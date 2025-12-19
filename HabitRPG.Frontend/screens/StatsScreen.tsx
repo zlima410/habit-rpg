@@ -6,6 +6,7 @@ import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
 import { UserStats, ApiError } from "../types/types";
 import api from "../api/api";
+import { StatsCardSkeleton, StatBoxSkeleton } from "../components/skeletons";
 
 export default function StatsScreen() {
   const { user } = useAuth();
@@ -47,10 +48,39 @@ export default function StatsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading statistics...</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Statistics</Text>
+          <Text style={styles.subtitle}>Track your progress</Text>
         </View>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <StatsCardSkeleton />
+          <StatsCardSkeleton />
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <TrendingUp size={20} color={colors.textPrimary} />
+              <Text style={styles.cardTitle}>Experience Points</Text>
+            </View>
+            <View style={styles.cardContent}>
+              <View style={styles.statsGrid}>
+                <StatBoxSkeleton />
+                <StatBoxSkeleton />
+              </View>
+            </View>
+          </View>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Calendar size={20} color={colors.textPrimary} />
+              <Text style={styles.cardTitle}>Streaks</Text>
+            </View>
+            <View style={styles.cardContent}>
+              <View style={styles.statsGrid}>
+                <StatBoxSkeleton />
+                <StatBoxSkeleton />
+              </View>
+            </View>
+          </View>
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
       </SafeAreaView>
     );
   }

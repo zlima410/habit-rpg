@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import { useHabits } from "../context/HabitsContext";
 import { Habit, GameReward, ApiError } from "../types/types";
 import api from "../api/api";
+import { HabitListSkeleton } from "../components/skeletons";
 
 export default function HabitsScreen() {
   const { user } = useAuth();
@@ -164,27 +165,31 @@ export default function HabitsScreen() {
     </View>
   );
 
-  const renderLoadingState = () => (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.loadingText}>Loading habits...</Text>
-    </View>
-  );
-
   if (isLoading && activeHabits.length === 0 && inactiveHabits.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>My Habits</Text>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddHabit}>
-              <Plus size={18} color={colors.textPrimary} />
-              <Text style={styles.addButtonText}>Add</Text>
-            </TouchableOpacity>
+      <ScreenErrorBoundary screenName="Habits">
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>My Habits</Text>
+              <TouchableOpacity style={styles.addButton} onPress={handleAddHabit}>
+                <Plus size={18} color={colors.textPrimary} />
+                <Text style={styles.addButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-        {renderLoadingState()}
-      </SafeAreaView>
+          <View style={styles.content}>
+            <View style={styles.habitCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Active Habits</Text>
+              </View>
+              <View style={styles.cardContent}>
+                <HabitListSkeleton count={5} />
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </ScreenErrorBoundary>
     );
   }
 

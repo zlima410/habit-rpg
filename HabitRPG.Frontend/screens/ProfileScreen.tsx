@@ -18,6 +18,7 @@ import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
 import { UserProfile, ApiError } from "../types/types";
 import api from "../api/api";
+import { PlayerStatsSkeleton, CardSkeleton } from "../components/skeletons";
 
 interface UpdateProfileRequest {
   username?: string;
@@ -172,10 +173,16 @@ export default function ProfileScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading profile...</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.subtitle}>Manage your character</Text>
         </View>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <PlayerStatsSkeleton />
+          <CardSkeleton showHeader={true} showContent={true} showFooter={false} />
+          <CardSkeleton showHeader={true} showContent={true} showFooter={false} />
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
       </SafeAreaView>
     );
   }

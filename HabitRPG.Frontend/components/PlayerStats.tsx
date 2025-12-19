@@ -7,6 +7,7 @@ import { Crown, Zap, Flame, Target } from "lucide-react-native"
 import api from "../api/api"
 import { UserProfile, ApiError } from "../types/types"
 import { useAuth } from "../context/AuthContext"
+import { PlayerStatsSkeleton } from "./skeletons"
 
 interface PlayerStatsProps {
     userId?: number;
@@ -59,14 +60,7 @@ export default function PlayerStats({ userId, refreshTrigger }: PlayerStatsProps
   }, [user, userId, refreshTrigger]);
 
   if (isLoading)
-    return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading player data...</Text>
-        </View>
-      </View>
-    );
+    return <PlayerStatsSkeleton />;
 
   if (error || !playerData)
     return (

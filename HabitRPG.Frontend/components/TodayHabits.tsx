@@ -6,6 +6,7 @@ import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
 import { useAuth } from "../context/AuthContext";
 import { Habit, GameReward, ApiError } from "../types/types";
 import api from "../api/api";
+import { HabitListSkeleton } from "./skeletons";
 
 interface TodayHabitsProps {
   refreshTrigger?: number;
@@ -158,7 +159,9 @@ export default function TodayHabits({
         <View style={styles.header}>
           <Text style={styles.title}>Today's Quests</Text>
         </View>
-        {renderLoadingState()}
+        <View style={styles.content}>
+          <HabitListSkeleton count={3} />
+        </View>
       </View>
     );
   }

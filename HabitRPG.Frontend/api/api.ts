@@ -1,6 +1,9 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { API_CONFIG } from '../config';
 import { TokenManager } from './tokenManager';
+import { OfflineStorage } from '../utils/offlineStorage';
+import { OfflineQueue } from '../utils/offlineQueue';
+import NetInfo from '@react-native-community/netinfo';
 import {
     AuthResponse,
     LoginRequest,
@@ -16,6 +19,17 @@ const api = axios.create({
     },
 });
 
+const isOffline = async (): Promise<boolean> => {
+    const state = await NetInfo.fetch();
+    return !state.isConnected || state.isInternetReachable === false;
+}
+
+const getCacheKey = (config: AxiosRequestConfig): string => {
+    const { method, url, params } = config;
+    const paramsStr = params ? JSON.stringify(params) : '';
+    return `${method}_${url}_${paramsStr}`;
+}
+
 api.interceptors.request.use(async (config) => {
     try {
         const token = await TokenManager.getToken();
@@ -28,6 +42,24 @@ api.interceptors.request.use(async (config) => {
                 config.headers.Authorization = `Bearer ${token}`;
             }
         }
+
+        const offline = await isOffline();
+        if (offline && config.method !== "get") {
+          await OfflineQueue.enqueue({
+            method: config.method?.toUpperCase() || "GET",
+            url: config.url || "",
+            data: config.data,
+            config: {
+              headers: config.headers,
+              params: config.params,
+            },
+          });
+
+          return Promise.reject({
+            message: "No internet connection. Request queued for later.",
+            isOffline: true,
+          });
+        }
     } catch (error) {
         console.error("❌ Error adding auth token to request:", error);
     }
@@ -36,9 +68,14 @@ api.interceptors.request.use(async (config) => {
 });
 
 api.interceptors.response.use(
-    (response: AxiosResponse) => {
+    async (response: AxiosResponse) => {
         if (__DEV__)
             console.log(`✅ API Success: ${response.config.method?.toUpperCase()} ${response.config.url}`);
+
+        if (response.config.method?.toLowerCase() === "get") {
+          const cacheKey = getCacheKey(response.config);
+          await OfflineStorage.set(cacheKey, response.data);
+        }
 
         return response;
     },
@@ -46,6 +83,41 @@ api.interceptors.response.use(
         if (__DEV__) {
             console.log(`❌ API Error: ${error.config?.method?.toUpperCase()} ${error.config?.url}`);
             console.log("Error details:", error.response?.data);
+        }
+
+        if (!error.response && error.request) {
+          const offline = await isOffline();
+
+          if (offline && error.config) {
+            if (error.config.method?.toLowerCase() === "get") {
+              const cacheKey = getCacheKey(error.config);
+              const cachedData = await OfflineStorage.get(cacheKey);
+
+              if (cachedData) {
+                console.log("📦 Returning cached data for:", error.config.url);
+                return Promise.resolve({
+                  ...error.response,
+                  data: cachedData,
+                  status: 200,
+                  statusText: "OK (Cached)",
+                  headers: {},
+                  config: error.config,
+                } as AxiosResponse);
+              }
+            }
+
+            if (error.config.method && error.config.method.toLowerCase() !== "get") {
+              await OfflineQueue.enqueue({
+                method: error.config.method.toUpperCase(),
+                url: error.config.url || "",
+                data: error.config.data,
+                config: {
+                  headers: error.config.headers,
+                  params: error.config.params,
+                },
+              });
+            }
+          }
         }
 
         if (error.response?.status == 401) {

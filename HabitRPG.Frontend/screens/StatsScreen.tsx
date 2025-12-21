@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BarChart3, TrendingUp, Calendar, Target } from "lucide-react-native";
 import { colors, spacing, fontSize, borderRadius } from "../constants/theme";
@@ -90,6 +90,9 @@ export default function StatsScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchStats}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -250,6 +253,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: fontSize.md,
     textAlign: "center",
+    marginBottom: spacing.md,
   },
   header: {
     backgroundColor: colors.cardBackground,
@@ -323,6 +327,17 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: "100%",
     borderRadius: borderRadius.sm,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    color: colors.textPrimary,
+    fontSize: fontSize.md,
+    fontWeight: "600",
   },
   statsGrid: {
     flexDirection: "row",

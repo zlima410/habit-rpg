@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext"
 import { colors } from "./constants/theme"
 import { HabitsProvider } from "./context/HabitsContext"
 import ErrorBoundaryWithReporting from "./components/ErrorBoundaryReporting"
+import OfflineIndicator from "./components/OfflineIndicator"
 
 const Tab = createBottomTabNavigator()
 const Stack = createStackNavigator()
@@ -109,11 +110,12 @@ export default function App() {
   return (
     <ErrorBoundaryWithReporting enableReporting={true}>
         <SafeAreaProvider>
-        <AuthProvider>
-            <HabitsProvider>
-            <AppContent />
-            </HabitsProvider>
-        </AuthProvider>
+            <OfflineIndicator />
+            <AuthProvider>
+                <HabitsProvider>
+                <AppContent />
+                </HabitsProvider>
+            </AuthProvider>
         </SafeAreaProvider>
     </ErrorBoundaryWithReporting>
   )

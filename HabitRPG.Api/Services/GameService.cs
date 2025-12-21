@@ -278,7 +278,6 @@ namespace HabitRPG.Api.Services
                 habit.LastCompletedAt = DateTime.UtcNow;
 
                 _unitOfWork.Habits.Update(habit);
-
                 return (true, string.Empty);
             }
             catch (Exception ex)
